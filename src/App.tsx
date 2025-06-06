@@ -1,12 +1,53 @@
+
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Index from "./pages/Index";
+import { SidebarProvider } from "@/components/ui/sidebar";
+import Dashboard from "./pages/Dashboard";
+import Portfolio from "./pages/Portfolio";
+import ResumeOptimizer from "./pages/ResumeOptimizer";
+import ResumeAnalyzer from "./pages/ResumeAnalyzer";
+import CoverLetter from "./pages/CoverLetter";
+import JobSearch from "./pages/JobSearch";
+import InterviewSimulator from "./pages/InterviewSimulator";
+import Profile from "./pages/Profile";
+import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
+import { AppSidebar } from "./components/AppSidebar";
+import { useAuth } from "./hooks/useAuth";
 
 const queryClient = new QueryClient();
+
+const AppContent = () => {
+  const { isAuthenticated } = useAuth();
+
+  if (!isAuthenticated) {
+    return <Login />;
+  }
+
+  return (
+    <SidebarProvider>
+      <div className="min-h-screen flex w-full">
+        <AppSidebar />
+        <main className="flex-1 overflow-hidden">
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/profile" element={<Profile />} />
+            <Route path="/portfolio" element={<Portfolio />} />
+            <Route path="/resume-optimizer" element={<ResumeOptimizer />} />
+            <Route path="/resume-analyzer" element={<ResumeAnalyzer />} />
+            <Route path="/cover-letter" element={<CoverLetter />} />
+            <Route path="/job-search" element={<JobSearch />} />
+            <Route path="/interview-simulator" element={<InterviewSimulator />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </main>
+      </div>
+    </SidebarProvider>
+  );
+};
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -14,11 +55,7 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <AppContent />
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
