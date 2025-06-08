@@ -1,18 +1,18 @@
 import * as pdfjsLib from 'pdfjs-dist';
+import mammoth from 'mammoth';
 
 // Set up PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
-// Enhanced PDF text extraction using PDF.js
+// Real PDF text extraction using PDF.js
 const extractTextFromPDF = async (file: File): Promise<string> => {
   try {
-    console.log('Starting PDF text extraction...');
+    console.log('Extracting text from PDF:', file.name);
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
     
     let fullText = '';
     
-    // Extract text from all pages
     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
       const page = await pdf.getPage(pageNum);
       const textContent = await page.getTextContent();
@@ -24,103 +24,34 @@ const extractTextFromPDF = async (file: File): Promise<string> => {
       fullText += pageText + '\n';
     }
     
-    console.log('PDF text extraction completed, length:', fullText.length);
+    console.log('Extracted PDF text length:', fullText.length);
     return fullText;
   } catch (error) {
-    console.error('Error extracting text from PDF:', error);
+    console.error('PDF extraction error:', error);
     throw new Error('Failed to extract text from PDF');
   }
 };
 
-// Enhanced text extraction for DOCX files
+// Real DOCX text extraction using mammoth
 const extractTextFromDOCX = async (file: File): Promise<string> => {
-  // For DOCX, we'll simulate extraction for now
-  // In a real implementation, you'd use a library like mammoth.js
-  console.log('Extracting text from DOCX file...');
-  
-  // Simulated realistic resume text based on file size and name
-  const simulatedText = `
-    SARAH JOHNSON
-    Senior Full Stack Developer
-    Email: sarah.johnson@email.com
-    Phone: +1 (555) 987-6543
-    Location: Seattle, WA
-    LinkedIn: linkedin.com/in/sarahjohnson
-    
-    PROFESSIONAL SUMMARY
-    Experienced full-stack developer with 6+ years of expertise in React, Node.js, and cloud technologies. 
-    Proven track record of building scalable web applications and leading development teams. 
-    Passionate about clean code, user experience, and continuous learning.
-    
-    TECHNICAL SKILLS
-    Frontend: React, TypeScript, JavaScript, HTML5, CSS3, Tailwind CSS, Next.js, Vue.js
-    Backend: Node.js, Express, Python, Django, REST APIs, GraphQL
-    Databases: PostgreSQL, MongoDB, Redis, MySQL
-    Cloud & DevOps: AWS, Docker, Kubernetes, CI/CD, Jenkins, Terraform
-    Tools: Git, Jest, Cypress, Webpack, Vite
-    
-    WORK EXPERIENCE
-    
-    TechFlow Solutions | Senior Full Stack Developer | Jan 2022 - Present
-    • Led development of enterprise SaaS platform serving 50,000+ users
-    • Architected microservices infrastructure reducing response time by 45%
-    • Mentored team of 4 junior developers and conducted code reviews
-    • Implemented automated testing suite increasing code coverage to 95%
-    • Collaborated with product team to deliver features ahead of schedule
-    
-    InnovateNow Inc. | Full Stack Developer | Mar 2020 - Dec 2021
-    • Built responsive web applications using React and Node.js
-    • Developed RESTful APIs and integrated third-party services
-    • Optimized database queries improving application performance by 35%
-    • Implemented authentication and authorization systems
-    • Participated in agile development process and sprint planning
-    
-    WebCraft Agency | Frontend Developer | Jun 2018 - Feb 2020
-    • Created pixel-perfect, responsive websites for 20+ clients
-    • Collaborated with designers to translate mockups into functional UIs
-    • Implemented SEO best practices improving search rankings
-    • Maintained and updated existing client websites
-    • Delivered projects on time and within budget
-    
-    EDUCATION
-    University of Washington | Bachelor of Science in Computer Science | 2014 - 2018
-    GPA: 3.7/4.0
-    Relevant Coursework: Data Structures, Algorithms, Software Engineering, Database Systems
-    
-    PROJECTS
-    E-Learning Platform
-    Full-stack learning management system with video streaming, progress tracking, and interactive quizzes.
-    Technologies: React, Node.js, MongoDB, AWS S3, Socket.io
-    
-    Personal Finance Tracker
-    Web application for tracking expenses, budgeting, and financial goal setting with data visualization.
-    Technologies: Vue.js, Express, PostgreSQL, Chart.js
-    
-    Real-time Chat Application
-    Scalable chat application with rooms, file sharing, and message encryption.
-    Technologies: React, Socket.io, Redis, Node.js
-    
-    CERTIFICATIONS
-    AWS Certified Developer Associate (2023)
-    Google Cloud Professional Developer (2022)
-    
-    ACHIEVEMENTS
-    • Winner of company-wide hackathon for innovation in user experience (2023)
-    • Contributed to open-source projects with 500+ GitHub stars
-    • Speaker at local JavaScript meetup on "Modern React Patterns"
-  `;
-  
-  return simulatedText;
+  try {
+    console.log('Extracting text from DOCX:', file.name);
+    const arrayBuffer = await file.arrayBuffer();
+    const result = await mammoth.extractRawText({ arrayBuffer });
+    console.log('Extracted DOCX text length:', result.value.length);
+    return result.value;
+  } catch (error) {
+    console.error('DOCX extraction error:', error);
+    throw new Error('Failed to extract text from DOCX');
+  }
 };
 
-// AI Service for resume data extraction and processing
 export const extractResumeData = async (file: File) => {
-  console.log('Starting AI-powered resume extraction for:', file.name);
+  console.log('Starting resume data extraction for:', file.name);
   
   let resumeText: string;
   
   try {
-    // Extract text based on file type
     if (file.type.includes('pdf')) {
       resumeText = await extractTextFromPDF(file);
     } else if (file.name.endsWith('.docx')) {
@@ -129,13 +60,13 @@ export const extractResumeData = async (file: File) => {
       throw new Error('Unsupported file type');
     }
     
-    console.log('Extracted text length:', resumeText.length);
-    console.log('Text preview:', resumeText.substring(0, 300) + '...');
+    if (!resumeText || resumeText.trim().length < 50) {
+      throw new Error('Could not extract sufficient text from the document');
+    }
     
-    // Simulate AI processing time for realistic UX
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    console.log('Extracted text preview:', resumeText.substring(0, 500));
     
-    // Enhanced data extraction using improved parsing
+    // Parse the extracted text into structured data
     const extractedData = {
       personalInfo: {
         name: extractName(resumeText),
@@ -155,17 +86,380 @@ export const extractResumeData = async (file: File) => {
     return extractedData;
     
   } catch (error) {
-    console.error('Error in resume extraction:', error);
+    console.error('Resume extraction failed:', error);
     throw error;
   }
 };
 
-// Portfolio Generation Service
-export const generatePortfolio = async (profileData: any, template: string, targetRole: string = '') => {
-  console.log('Starting portfolio generation with template:', template);
+// Enhanced name extraction
+const extractName = (text: string): string => {
+  const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
   
-  // Simulate AI processing time
-  await new Promise(resolve => setTimeout(resolve, 3000));
+  for (let i = 0; i < Math.min(10, lines.length); i++) {
+    const line = lines[i];
+    
+    // Skip lines that are clearly not names
+    if (line.toLowerCase().includes('resume') || 
+        line.toLowerCase().includes('curriculum') ||
+        line.includes('@') || 
+        line.includes('(') || 
+        line.includes('http') ||
+        line.length < 3 || 
+        line.length > 60) {
+      continue;
+    }
+    
+    // Check if line looks like a name
+    const namePattern = /^[A-Za-z\s\-'\.]{3,50}$/;
+    if (namePattern.test(line)) {
+      const words = line.split(/\s+/);
+      if (words.length >= 2 && words.length <= 4) {
+        return line;
+      }
+    }
+  }
+  
+  return "Name Not Found";
+};
+
+// Enhanced email extraction
+const extractEmail = (text: string): string => {
+  const emailPattern = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+  const matches = text.match(emailPattern);
+  return matches && matches.length > 0 ? matches[0] : "email@example.com";
+};
+
+// Enhanced phone extraction
+const extractPhone = (text: string): string => {
+  const phonePatterns = [
+    /(?:\+?1[-.\s]?)?\(?([0-9]{3})\)?[-.\s]?([0-9]{3})[-.\s]?([0-9]{4})/,
+    /\+?[1-9]\d{1,14}/
+  ];
+  
+  for (const pattern of phonePatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      return match[0];
+    }
+  }
+  
+  return "Phone Not Found";
+};
+
+// Enhanced location extraction
+const extractLocation = (text: string): string => {
+  const locationPatterns = [
+    /([A-Za-z\s]+),\s*([A-Z]{2})\b/,
+    /([A-Za-z\s]+),\s*([A-Za-z\s]+)/
+  ];
+  
+  for (const pattern of locationPatterns) {
+    const matches = text.match(pattern);
+    if (matches && matches.length > 0) {
+      const location = matches[0];
+      if (location.length < 50 && !location.includes('@')) {
+        return location;
+      }
+    }
+  }
+  
+  return "Location Not Found";
+};
+
+// Enhanced title extraction
+const extractTitle = (text: string): string => {
+  const titleKeywords = [
+    'developer', 'engineer', 'analyst', 'manager', 'designer', 
+    'consultant', 'specialist', 'lead', 'senior', 'junior',
+    'architect', 'director', 'coordinator', 'administrator',
+    'programmer', 'technician', 'supervisor', 'executive'
+  ];
+  
+  const lines = text.split('\n').map(line => line.trim());
+  
+  for (let i = 0; i < Math.min(15, lines.length); i++) {
+    const line = lines[i];
+    const lowerLine = line.toLowerCase();
+    
+    if (titleKeywords.some(keyword => lowerLine.includes(keyword)) && 
+        line.length < 100 && 
+        !line.includes('@') &&
+        !line.includes('(') &&
+        !line.includes('http')) {
+      return line;
+    }
+  }
+  
+  return "Professional Title Not Found";
+};
+
+// Enhanced summary extraction
+const extractSummary = (text: string): string => {
+  const summaryKeywords = ['summary', 'objective', 'profile', 'overview', 'about', 'introduction'];
+  const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+  
+  let summaryStart = -1;
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].toLowerCase();
+    if (summaryKeywords.some(keyword => line.includes(keyword) && line.length < 50)) {
+      summaryStart = i + 1;
+      break;
+    }
+  }
+  
+  if (summaryStart !== -1) {
+    let summaryEnd = summaryStart;
+    for (let i = summaryStart; i < lines.length && i < summaryStart + 10; i++) {
+      const line = lines[i].toLowerCase();
+      if (line.includes('experience') || 
+          line.includes('education') ||
+          line.includes('skills') ||
+          line.includes('employment')) {
+        break;
+      }
+      if (lines[i].length > 20) {
+        summaryEnd = i + 1;
+      }
+    }
+    
+    const summary = lines.slice(summaryStart, summaryEnd).join(' ').trim();
+    if (summary.length > 50) {
+      return summary.substring(0, 800);
+    }
+  }
+  
+  return "Professional summary not found in resume";
+};
+
+// Enhanced experience extraction
+const extractExperience = (text: string) => {
+  const experiences = [];
+  const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+  
+  let inExperienceSection = false;
+  let currentExp: any = null;
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const lowerLine = line.toLowerCase();
+    
+    if (lowerLine.includes('experience') || lowerLine.includes('employment') || lowerLine.includes('work history')) {
+      inExperienceSection = true;
+      continue;
+    }
+    
+    if (inExperienceSection && (lowerLine.includes('education') || 
+        lowerLine.includes('skills') || lowerLine.includes('projects'))) {
+      if (currentExp) experiences.push(currentExp);
+      break;
+    }
+    
+    if (inExperienceSection && line) {
+      // Look for company/position patterns
+      if (line.includes('|') || (line.includes('-') && !line.startsWith('-') && !line.startsWith('•'))) {
+        if (currentExp) experiences.push(currentExp);
+        
+        const parts = line.split(/[|\-–]/);
+        if (parts.length >= 2) {
+          currentExp = {
+            company: parts[0].trim(),
+            position: parts[1].trim(),
+            duration: parts[2]?.trim() || "Duration not specified",
+            description: "",
+            achievements: []
+          };
+        }
+      } else if (currentExp && (line.startsWith('•') || line.startsWith('-') || line.startsWith('*'))) {
+        const achievement = line.replace(/^[•\-*]\s*/, '').trim();
+        if (achievement.length > 10) {
+          currentExp.achievements.push(achievement);
+        }
+      } else if (currentExp && line.length > 30 && !currentExp.description) {
+        currentExp.description = line;
+      }
+    }
+  }
+  
+  if (currentExp) experiences.push(currentExp);
+  
+  return experiences.length > 0 ? experiences.slice(0, 5) : [{
+    company: "Experience not found",
+    position: "Please update manually",
+    duration: "N/A",
+    description: "No work experience could be extracted from the resume",
+    achievements: []
+  }];
+};
+
+// Enhanced education extraction
+const extractEducation = (text: string) => {
+  const education = [];
+  const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+  
+  let inEducationSection = false;
+  
+  for (const line of lines) {
+    const lowerLine = line.toLowerCase();
+    
+    if (lowerLine.includes('education') || lowerLine.includes('academic')) {
+      inEducationSection = true;
+      continue;
+    }
+    
+    if (inEducationSection && (lowerLine.includes('experience') || 
+        lowerLine.includes('skills') || lowerLine.includes('projects'))) {
+      break;
+    }
+    
+    if (inEducationSection && line.trim()) {
+      const degreeKeywords = ['bachelor', 'master', 'phd', 'doctorate', 'diploma', 'certificate', 'degree'];
+      const institutionKeywords = ['university', 'college', 'institute', 'school'];
+      
+      if (degreeKeywords.some(keyword => lowerLine.includes(keyword)) || 
+          institutionKeywords.some(keyword => lowerLine.includes(keyword))) {
+        
+        const parts = line.split(/[|\-–]/);
+        education.push({
+          institution: parts[0]?.trim() || "Institution not specified",
+          degree: parts[1]?.trim() || "Degree not specified",
+          field: parts[2]?.trim() || "Field not specified",
+          duration: parts[3]?.trim() || "Duration not specified",
+          gpa: line.toLowerCase().includes('gpa') ? 
+            line.match(/gpa:?\s*(\d+\.?\d*)/i)?.[1] : undefined
+        });
+      }
+    }
+  }
+  
+  return education.length > 0 ? education : [{
+    institution: "Education not found",
+    degree: "Please update manually",
+    field: "N/A",
+    duration: "N/A"
+  }];
+};
+
+// Enhanced skills extraction
+const extractSkills = (text: string) => {
+  const lowerText = text.toLowerCase();
+  
+  const techSkillsFound = [];
+  const softSkillsFound = [];
+  
+  // Comprehensive technical skills list
+  const techSkills = [
+    'javascript', 'python', 'java', 'react', 'angular', 'vue', 'node',
+    'typescript', 'html', 'css', 'sql', 'mongodb', 'postgresql', 'mysql',
+    'aws', 'azure', 'docker', 'kubernetes', 'git', 'jenkins', 'terraform',
+    'express', 'django', 'flask', 'spring', 'laravel', 'ruby', 'php',
+    'graphql', 'rest', 'api', 'microservices', 'redis', 'elasticsearch',
+    'flutter', 'swift', 'kotlin', 'c++', 'c#', 'golang', 'rust',
+    'figma', 'photoshop', 'illustrator', 'sketch', 'tableau', 'powerbi'
+  ];
+  
+  // Comprehensive soft skills list
+  const softSkills = [
+    'leadership', 'communication', 'teamwork', 'problem solving', 'analytical',
+    'project management', 'agile', 'scrum', 'mentoring', 'collaboration',
+    'time management', 'critical thinking', 'adaptability', 'creativity',
+    'strategic planning', 'negotiation', 'presentation', 'customer service'
+  ];
+  
+  // Extract technical skills
+  techSkills.forEach(skill => {
+    if (lowerText.includes(skill)) {
+      const properCase = skill.charAt(0).toUpperCase() + skill.slice(1);
+      if (!techSkillsFound.includes(properCase)) {
+        techSkillsFound.push(properCase);
+      }
+    }
+  });
+  
+  // Extract soft skills
+  softSkills.forEach(skill => {
+    if (lowerText.includes(skill)) {
+      const properCase = skill.split(' ').map(word => 
+        word.charAt(0).toUpperCase() + word.slice(1)
+      ).join(' ');
+      if (!softSkillsFound.includes(properCase)) {
+        softSkillsFound.push(properCase);
+      }
+    }
+  });
+  
+  return {
+    technical: techSkillsFound.length > 0 ? techSkillsFound.slice(0, 15) : ['Skills not found'],
+    soft: softSkillsFound.length > 0 ? softSkillsFound.slice(0, 10) : ['Soft skills not found']
+  };
+};
+
+// Enhanced projects extraction
+const extractProjects = (text: string) => {
+  const projects = [];
+  const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+  
+  let inProjectsSection = false;
+  let currentProject: any = null;
+  
+  for (const line of lines) {
+    const lowerLine = line.toLowerCase();
+    
+    if (lowerLine.includes('project') && lowerLine.length < 50) {
+      inProjectsSection = true;
+      continue;
+    }
+    
+    if (inProjectsSection && (lowerLine.includes('education') || 
+        lowerLine.includes('certification') || lowerLine.includes('achievement'))) {
+      if (currentProject) projects.push(currentProject);
+      break;
+    }
+    
+    if (inProjectsSection && line.trim()) {
+      if (!line.startsWith('-') && !line.startsWith('•') && 
+          !line.toLowerCase().includes('technologies') &&
+          line.length > 10 && line.length < 100) {
+        
+        if (currentProject) projects.push(currentProject);
+        
+        currentProject = {
+          name: line.trim(),
+          description: "",
+          technologies: [],
+          link: ""
+        };
+      } else if (currentProject) {
+        if (line.toLowerCase().includes('technologies') || line.toLowerCase().includes('tech stack')) {
+          const techMatch = line.match(/technologies?:?\s*(.+)/i);
+          if (techMatch) {
+            currentProject.technologies = techMatch[1]
+              .split(/[,\s]+/)
+              .map((tech: string) => tech.trim())
+              .filter((tech: string) => tech.length > 1 && tech.length < 20);
+          }
+        } else if (!currentProject.description && line.length > 20) {
+          currentProject.description = line.trim();
+        }
+      }
+    }
+  }
+  
+  if (currentProject) projects.push(currentProject);
+  
+  return projects.length > 0 ? projects.slice(0, 6) : [{
+    name: "Projects not found",
+    description: "No projects could be extracted from the resume",
+    technologies: [],
+    link: ""
+  }];
+};
+
+// Portfolio generation function
+export const generatePortfolio = async (profileData: any, template: string, targetRole: string = '') => {
+  console.log('Generating portfolio with template:', template);
+  
+  await new Promise(resolve => setTimeout(resolve, 2000));
   
   const portfolioContent = generatePortfolioContent(profileData, template, targetRole);
   
@@ -178,9 +472,8 @@ export const generatePortfolio = async (profileData: any, template: string, targ
 const generatePortfolioContent = (profileData: any, template: string, targetRole: string) => {
   const { personalInfo, experience, education, skills, projects } = profileData;
   
-  // Generate tailored content based on target role
   const roleOptimizedSummary = targetRole 
-    ? `${personalInfo.summary} Seeking opportunities as a ${targetRole} to leverage my expertise and drive innovation.`
+    ? `${personalInfo.summary} Currently seeking opportunities as a ${targetRole} to leverage my expertise and drive innovation.`
     : personalInfo.summary;
   
   const html = `<!DOCTYPE html>
@@ -194,7 +487,6 @@ const generatePortfolioContent = (profileData: any, template: string, targetRole
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body class="${template}">
-    <!-- Header Section -->
     <header class="hero-section">
         <div class="container">
             <div class="hero-content">
@@ -222,7 +514,6 @@ const generatePortfolioContent = (profileData: any, template: string, targetRole
         </div>
     </header>
 
-    <!-- Skills Section -->
     <section class="skills-section">
         <div class="container">
             <h2 class="section-title">Technical Expertise</h2>
@@ -240,7 +531,6 @@ const generatePortfolioContent = (profileData: any, template: string, targetRole
         </div>
     </section>
 
-    <!-- Experience Section -->
     <section class="experience-section">
         <div class="container">
             <h2 class="section-title">Professional Experience</h2>
@@ -265,7 +555,6 @@ const generatePortfolioContent = (profileData: any, template: string, targetRole
         </div>
     </section>
 
-    <!-- Projects Section -->
     <section class="projects-section">
         <div class="container">
             <h2 class="section-title">Featured Projects</h2>
@@ -286,7 +575,6 @@ const generatePortfolioContent = (profileData: any, template: string, targetRole
         </div>
     </section>
 
-    <!-- Education Section -->
     <section class="education-section">
         <div class="container">
             <h2 class="section-title">Education</h2>
@@ -303,31 +591,11 @@ const generatePortfolioContent = (profileData: any, template: string, targetRole
         </div>
     </section>
 
-    <!-- Footer -->
     <footer class="footer">
         <div class="container">
             <p>&copy; 2024 ${personalInfo.name}. All rights reserved.</p>
         </div>
     </footer>
-
-    <script>
-        // Smooth scrolling and animations
-        document.addEventListener('DOMContentLoaded', function() {
-            // Add fade-in animation to sections
-            const sections = document.querySelectorAll('section');
-            const observer = new IntersectionObserver((entries) => {
-                entries.forEach(entry => {
-                    if (entry.isIntersecting) {
-                        entry.target.classList.add('fade-in');
-                    }
-                });
-            });
-            
-            sections.forEach(section => {
-                observer.observe(section);
-            });
-        });
-    </script>
 </body>
 </html>`;
 
@@ -337,7 +605,8 @@ const generatePortfolioContent = (profileData: any, template: string, targetRole
 };
 
 const generateTemplateCSS = (template: string) => {
-  const baseCSS = `
+  // Base CSS styles for the portfolio
+  return `
 /* Base Styles */
 * {
     margin: 0;
@@ -358,48 +627,37 @@ body {
     padding: 0 20px;
 }
 
-/* Hero Section */
 .hero-section {
     padding: 80px 0;
     text-align: center;
-    position: relative;
-    overflow: hidden;
-}
-
-.hero-content {
-    position: relative;
-    z-index: 2;
-}
-
-.profile-image {
-    margin-bottom: 30px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
 }
 
 .avatar {
     width: 120px;
     height: 120px;
     border-radius: 50%;
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
     display: inline-flex;
     align-items: center;
     justify-content: center;
     font-size: 48px;
     font-weight: 600;
     color: white;
-    margin: 0 auto;
+    margin: 0 auto 30px;
 }
 
 .name {
     font-size: 48px;
     font-weight: 700;
     margin-bottom: 10px;
-    letter-spacing: -1px;
 }
 
 .title {
     font-size: 24px;
-    font-weight: 500;
     margin-bottom: 30px;
-    opacity: 0.8;
+    opacity: 0.9;
 }
 
 .summary {
@@ -420,25 +678,10 @@ body {
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 16px;
 }
 
-.contact-item i {
-    width: 20px;
-    text-align: center;
-}
-
-/* Section Styles */
 section {
     padding: 80px 0;
-    opacity: 0;
-    transform: translateY(20px);
-    transition: all 0.6s ease;
-}
-
-section.fade-in {
-    opacity: 1;
-    transform: translateY(0);
 }
 
 .section-title {
@@ -446,28 +689,9 @@ section.fade-in {
     font-weight: 700;
     text-align: center;
     margin-bottom: 50px;
-    position: relative;
+    color: #333;
 }
 
-.section-title::after {
-    content: '';
-    position: absolute;
-    bottom: -10px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 60px;
-    height: 4px;
-    border-radius: 2px;
-}
-
-.subsection-title {
-    font-size: 24px;
-    font-weight: 600;
-    margin: 40px 0 20px;
-    text-align: center;
-}
-
-/* Skills Section */
 .skills-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
@@ -477,14 +701,11 @@ section.fade-in {
 
 .skill-tag {
     padding: 12px 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
     border-radius: 25px;
     text-align: center;
     font-weight: 500;
-    transition: transform 0.2s ease;
-}
-
-.skill-tag:hover {
-    transform: translateY(-2px);
 }
 
 .soft-skills {
@@ -496,87 +717,51 @@ section.fade-in {
 
 .soft-skill {
     padding: 8px 16px;
+    background: #f8f9ff;
+    color: #667eea;
+    border: 1px solid #667eea;
     border-radius: 20px;
     font-size: 14px;
-    font-weight: 500;
 }
 
-/* Timeline */
 .timeline {
-    position: relative;
     max-width: 800px;
     margin: 0 auto;
 }
 
-.timeline::before {
-    content: '';
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 2px;
-    height: 100%;
-    top: 0;
-}
-
 .timeline-item {
-    position: relative;
     margin-bottom: 40px;
-    padding: 0 40px;
-}
-
-.timeline-marker {
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    top: 20px;
-}
-
-.timeline-content {
     padding: 30px;
+    background: white;
     border-radius: 12px;
     box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-    position: relative;
-}
-
-.timeline-item:nth-child(odd) .timeline-content {
-    margin-right: 50%;
-}
-
-.timeline-item:nth-child(even) .timeline-content {
-    margin-left: 50%;
 }
 
 .position {
     font-size: 20px;
     font-weight: 600;
+    color: #333;
     margin-bottom: 5px;
 }
 
 .company {
     font-size: 18px;
-    font-weight: 500;
+    color: #667eea;
     margin-bottom: 10px;
 }
 
 .duration {
-    font-size: 14px;
-    font-weight: 500;
+    background: #667eea;
+    color: white;
     padding: 4px 12px;
     border-radius: 12px;
-    display: inline-block;
-    margin-bottom: 15px;
-}
-
-.description {
-    margin-bottom: 15px;
-    line-height: 1.6;
+    font-size: 14px;
+    font-weight: 500;
 }
 
 .achievements {
     list-style: none;
+    margin-top: 15px;
 }
 
 .achievements li {
@@ -589,10 +774,9 @@ section.fade-in {
     content: '▶';
     position: absolute;
     left: 0;
-    font-size: 12px;
+    color: #667eea;
 }
 
-/* Projects Grid */
 .projects-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -601,55 +785,38 @@ section.fade-in {
 
 .project-card {
     padding: 30px;
+    background: white;
     border-radius: 12px;
     box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    transition: transform 0.3s ease;
 }
 
 .project-card:hover {
     transform: translateY(-5px);
-    box-shadow: 0 8px 30px rgba(0,0,0,0.15);
 }
 
 .project-name {
     font-size: 22px;
     font-weight: 600;
     margin-bottom: 15px;
-}
-
-.project-description {
-    margin-bottom: 20px;
-    line-height: 1.6;
+    color: #333;
 }
 
 .project-tech {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    margin-bottom: 20px;
+    margin: 20px 0;
 }
 
 .tech-tag {
     padding: 4px 12px;
+    background: #e1e8ff;
+    color: #667eea;
     border-radius: 15px;
     font-size: 12px;
-    font-weight: 500;
 }
 
-.project-link {
-    display: inline-block;
-    padding: 10px 20px;
-    border-radius: 8px;
-    text-decoration: none;
-    font-weight: 500;
-    transition: transform 0.2s ease;
-}
-
-.project-link:hover {
-    transform: translateY(-2px);
-}
-
-/* Education */
 .education-list {
     max-width: 600px;
     margin: 0 auto;
@@ -657,741 +824,36 @@ section.fade-in {
 
 .education-item {
     padding: 25px;
+    background: white;
     border-radius: 12px;
     margin-bottom: 20px;
     box-shadow: 0 2px 15px rgba(0,0,0,0.08);
+    border-left: 4px solid #667eea;
 }
 
 .degree {
     font-size: 20px;
     font-weight: 600;
-    margin-bottom: 8px;
+    color: #333;
 }
 
 .institution {
-    font-size: 16px;
+    color: #667eea;
     font-weight: 500;
-    margin-bottom: 10px;
 }
 
-.gpa {
-    font-size: 14px;
-    font-weight: 500;
-    padding: 4px 12px;
-    border-radius: 12px;
-    margin-left: 10px;
-}
-
-/* Footer */
 .footer {
-    padding: 40px 0;
+    background: #333;
+    color: white;
     text-align: center;
-    border-top: 1px solid #eee;
+    padding: 40px 0;
 }
 
-/* Responsive Design */
 @media (max-width: 768px) {
-    .name {
-        font-size: 36px;
-    }
-    
-    .title {
-        font-size: 20px;
-    }
-    
-    .contact-info {
-        flex-direction: column;
-        gap: 15px;
-    }
-    
-    .timeline::before {
-        left: 20px;
-    }
-    
-    .timeline-marker {
-        left: 20px;
-    }
-    
-    .timeline-item {
-        padding-left: 50px;
-        padding-right: 20px;
-    }
-    
-    .timeline-item:nth-child(odd) .timeline-content,
-    .timeline-item:nth-child(even) .timeline-content {
-        margin: 0;
-    }
-    
-    .projects-grid {
-        grid-template-columns: 1fr;
-    }
-    
-    .skills-grid {
-        grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
-    }
+    .name { font-size: 32px; }
+    .contact-info { flex-direction: column; gap: 15px; }
+    .projects-grid { grid-template-columns: 1fr; }
+    .skills-grid { grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); }
 }
 `;
-
-  // Template-specific styles
-  const templateStyles = {
-    modern: `
-/* Modern Template */
-.modern {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-}
-
-.modern .hero-section {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-}
-
-.modern .avatar {
-    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-}
-
-.modern .section-title::after {
-    background: linear-gradient(90deg, #667eea, #764ba2);
-}
-
-.modern .skill-tag {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-}
-
-.modern .soft-skill {
-    background: #f8f9ff;
-    color: #667eea;
-    border: 1px solid #667eea;
-}
-
-.modern .timeline::before {
-    background: linear-gradient(180deg, #667eea, #764ba2);
-}
-
-.modern .timeline-marker {
-    background: #667eea;
-}
-
-.modern .timeline-content {
-    background: white;
-}
-
-.modern .duration {
-    background: #667eea;
-    color: white;
-}
-
-.modern .project-card {
-    background: white;
-    border: 1px solid #e1e8ff;
-}
-
-.modern .tech-tag {
-    background: #e1e8ff;
-    color: #667eea;
-}
-
-.modern .project-link {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-}
-
-.modern .education-item {
-    background: white;
-    border-left: 4px solid #667eea;
-}
-
-.modern .gpa {
-    background: #667eea;
-    color: white;
-}
-
-.modern .skills-section {
-    background: #f8f9ff;
-}
-`,
-    creative: `
-/* Creative Template */
-.creative {
-    background: #fff;
-}
-
-.creative .hero-section {
-    background: linear-gradient(45deg, #ff6b6b, #4ecdc4, #45b7d1, #96ceb4);
-    background-size: 400% 400%;
-    animation: gradientShift 15s ease infinite;
-    color: white;
-}
-
-@keyframes gradientShift {
-    0% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-    100% { background-position: 0% 50%; }
-}
-
-.creative .avatar {
-    background: linear-gradient(135deg, #ff6b6b 0%, #4ecdc4 100%);
-}
-
-.creative .section-title::after {
-    background: linear-gradient(90deg, #ff6b6b, #4ecdc4);
-}
-
-.creative .skill-tag {
-    background: linear-gradient(135deg, #ff6b6b 0%, #4ecdc4 50%, #45b7d1 100%);
-    color: white;
-}
-
-.creative .soft-skill {
-    background: #fff5f5;
-    color: #ff6b6b;
-    border: 2px solid #ff6b6b;
-}
-
-.creative .timeline::before {
-    background: linear-gradient(180deg, #ff6b6b, #4ecdc4);
-}
-
-.creative .timeline-marker {
-    background: #ff6b6b;
-}
-
-.creative .duration {
-    background: #4ecdc4;
-    color: white;
-}
-
-.creative .project-card {
-    background: white;
-    border: 2px solid #ff6b6b;
-}
-
-.creative .tech-tag {
-    background: #4ecdc4;
-    color: white;
-}
-
-.creative .project-link {
-    background: linear-gradient(135deg, #ff6b6b 0%, #4ecdc4 100%);
-    color: white;
-}
-
-.creative .education-item {
-    background: white;
-    border-left: 6px solid #ff6b6b;
-}
-
-.creative .gpa {
-    background: #4ecdc4;
-    color: white;
-}
-`,
-    executive: `
-/* Executive Template */
-.executive {
-    background: #f8f9fa;
-}
-
-.executive .hero-section {
-    background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
-    color: white;
-}
-
-.executive .avatar {
-    background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
-}
-
-.executive .section-title::after {
-    background: #2c3e50;
-}
-
-.executive .skill-tag {
-    background: #2c3e50;
-    color: white;
-}
-
-.executive .soft-skill {
-    background: #ecf0f1;
-    color: #2c3e50;
-    border: 1px solid #2c3e50;
-}
-
-.executive .timeline::before {
-    background: #2c3e50;
-}
-
-.executive .timeline-marker {
-    background: #3498db;
-}
-
-.executive .duration {
-    background: #3498db;
-    color: white;
-}
-
-.executive .project-card {
-    background: white;
-    border: 1px solid #bdc3c7;
-}
-
-.executive .tech-tag {
-    background: #ecf0f1;
-    color: #2c3e50;
-}
-
-.executive .project-link {
-    background: #2c3e50;
-    color: white;
-}
-
-.executive .education-item {
-    background: white;
-    border-left: 4px solid #3498db;
-}
-
-.executive .gpa {
-    background: #3498db;
-    color: white;
-}
-`,
-    startup: `
-/* Startup Template */
-.startup {
-    background: #fff;
-}
-
-.startup .hero-section {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
-    color: white;
-}
-
-.startup .avatar {
-    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-}
-
-.startup .section-title::after {
-    background: linear-gradient(90deg, #667eea, #f093fb);
-}
-
-.startup .skill-tag {
-    background: linear-gradient(135deg, #667eea 0%, #f093fb 100%);
-    color: white;
-}
-
-.startup .soft-skill {
-    background: #f8f9ff;
-    color: #667eea;
-    border: 1px solid #f093fb;
-}
-
-.startup .timeline::before {
-    background: linear-gradient(180deg, #667eea, #f093fb);
-}
-
-.startup .timeline-marker {
-    background: #f093fb;
-}
-
-.startup .duration {
-    background: #667eea;
-    color: white;
-}
-
-.startup .project-card {
-    background: white;
-    border: 2px solid #f093fb;
-    border-radius: 16px;
-}
-
-.startup .tech-tag {
-    background: #f093fb;
-    color: white;
-}
-
-.startup .project-link {
-    background: linear-gradient(135deg, #667eea 0%, #f093fb 100%);
-    color: white;
-}
-
-.startup .education-item {
-    background: white;
-    border-left: 4px solid #f093fb;
-}
-
-.startup .gpa {
-    background: #f093fb;
-    color: white;
-}
-
-.startup .skills-section {
-    background: linear-gradient(135deg, #f8f9ff 0%, #fff5f8 100%);
-}
-`
-  };
-
-  return baseCSS + (templateStyles[template as keyof typeof templateStyles] || templateStyles.modern);
-};
-
-const extractName = (text: string): string => {
-  const lines = text.split('\n').filter(line => line.trim());
-  
-  // Look for name patterns in first few lines
-  for (let i = 0; i < Math.min(5, lines.length); i++) {
-    const line = lines[i].trim();
-    
-    // Skip common headers and contact info
-    if (line.toLowerCase().includes('resume') || 
-        line.toLowerCase().includes('curriculum') ||
-        line.includes('@') || 
-        line.includes('(') || 
-        line.length < 3 || 
-        line.length > 50) {
-      continue;
-    }
-    
-    // Check if line looks like a name (contains letters and possibly spaces)
-    if (/^[A-Za-z\s\-'\.]+$/.test(line) && line.split(' ').length >= 2) {
-      return line;
-    }
-  }
-  
-  return "Professional"; // fallback
-};
-
-const extractEmail = (text: string): string => {
-  const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
-  const matches = text.match(emailRegex);
-  return matches ? matches[0] : "contact@email.com";
-};
-
-const extractPhone = (text: string): string => {
-  const phoneRegex = /(?:\+?1[-.\s]?)?\(?([0-9]{3})\)?[-.\s]?([0-9]{3})[-.\s]?([0-9]{4})/g;
-  const match = text.match(phoneRegex);
-  return match ? match[0] : "+1 (555) 123-4567";
-};
-
-const extractLocation = (text: string): string => {
-  const locationPatterns = [
-    /([A-Za-z\s]+),\s*([A-Z]{2})\b/g,
-    /([A-Za-z\s]+),\s*([A-Za-z\s]+)/g
-  ];
-  
-  for (const pattern of locationPatterns) {
-    const matches = text.match(pattern);
-    if (matches && matches.length > 0) {
-      return matches[0];
-    }
-  }
-  
-  return "City, State";
-};
-
-const extractTitle = (text: string): string => {
-  const titleKeywords = [
-    'developer', 'engineer', 'analyst', 'manager', 'designer', 
-    'consultant', 'specialist', 'lead', 'senior', 'junior',
-    'architect', 'director', 'coordinator', 'administrator'
-  ];
-  
-  const lines = text.split('\n');
-  
-  for (let i = 0; i < Math.min(10, lines.length); i++) {
-    const line = lines[i].trim().toLowerCase();
-    
-    if (titleKeywords.some(keyword => line.includes(keyword)) && 
-        line.length < 100 && 
-        !line.includes('@') &&
-        !line.includes('(')) {
-      return lines[i].trim();
-    }
-  }
-  
-  return "Professional";
-};
-
-const extractSummary = (text: string): string => {
-  const summaryKeywords = ['summary', 'objective', 'profile', 'overview', 'about'];
-  const lines = text.split('\n');
-  
-  let summaryStart = -1;
-  let summaryEnd = -1;
-  
-  // Find summary section
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].toLowerCase().trim();
-    if (summaryKeywords.some(keyword => line.includes(keyword))) {
-      summaryStart = i + 1;
-      break;
-    }
-  }
-  
-  if (summaryStart !== -1) {
-    // Find end of summary (next section or empty lines)
-    for (let i = summaryStart; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (line.toLowerCase().includes('experience') || 
-          line.toLowerCase().includes('education') ||
-          line.toLowerCase().includes('skills') ||
-          (line === '' && i > summaryStart + 2)) {
-        summaryEnd = i;
-        break;
-      }
-    }
-    
-    if (summaryEnd === -1) summaryEnd = Math.min(summaryStart + 5, lines.length);
-    
-    const summary = lines.slice(summaryStart, summaryEnd)
-      .filter(line => line.trim())
-      .join(' ')
-      .trim();
-    
-    if (summary.length > 50) {
-      return summary.substring(0, 500);
-    }
-  }
-  
-  return "Experienced professional with expertise in technology and innovation.";
-};
-
-const extractExperience = (text: string) => {
-  // Enhanced experience extraction logic
-  const experiences = [];
-  const lines = text.split('\n');
-  
-  let inExperienceSection = false;
-  let currentExp: any = null;
-  
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
-    const lowerLine = line.toLowerCase();
-    
-    // Detect experience section
-    if (lowerLine.includes('experience') || lowerLine.includes('employment')) {
-      inExperienceSection = true;
-      continue;
-    }
-    
-    // Stop at other sections
-    if (inExperienceSection && (lowerLine.includes('education') || 
-        lowerLine.includes('skills') || lowerLine.includes('projects'))) {
-      if (currentExp) experiences.push(currentExp);
-      break;
-    }
-    
-    if (inExperienceSection && line) {
-      // Look for company/position patterns
-      if (line.includes('|') || (line.includes('-') && !line.startsWith('-'))) {
-        if (currentExp) experiences.push(currentExp);
-        
-        const parts = line.split(/[|\-]/);
-        if (parts.length >= 2) {
-          currentExp = {
-            company: parts[0].trim(),
-            position: parts[1].trim(),
-            duration: parts[2]?.trim() || "Recent",
-            description: "",
-            achievements: []
-          };
-        }
-      } else if (currentExp && (line.startsWith('•') || line.startsWith('-'))) {
-        currentExp.achievements.push(line.replace(/^[•\-]\s*/, ''));
-      } else if (currentExp && line.length > 20) {
-        if (!currentExp.description) {
-          currentExp.description = line;
-        }
-      }
-    }
-  }
-  
-  if (currentExp) experiences.push(currentExp);
-  
-  // Fallback with sample data if no experience found
-  if (experiences.length === 0) {
-    return [
-      {
-        company: "Previous Company",
-        position: "Software Developer",
-        duration: "2020 - Present",
-        description: "Developed and maintained web applications using modern technologies.",
-        achievements: [
-          "Built responsive user interfaces",
-          "Collaborated with cross-functional teams",
-          "Delivered projects on time and within budget"
-        ]
-      }
-    ];
-  }
-  
-  return experiences.slice(0, 5); // Limit to 5 experiences
-};
-
-const extractEducation = (text: string) => {
-  const education = [];
-  const lines = text.split('\n');
-  
-  let inEducationSection = false;
-  
-  for (const line of lines) {
-    const lowerLine = line.toLowerCase().trim();
-    
-    if (lowerLine.includes('education')) {
-      inEducationSection = true;
-      continue;
-    }
-    
-    if (inEducationSection && (lowerLine.includes('experience') || 
-        lowerLine.includes('skills') || lowerLine.includes('projects'))) {
-      break;
-    }
-    
-    if (inEducationSection && line.trim()) {
-      // Look for university/degree patterns
-      if (line.includes('|') || line.toLowerCase().includes('university') || 
-          line.toLowerCase().includes('college') || line.toLowerCase().includes('institute')) {
-        
-        const parts = line.split('|');
-        education.push({
-          institution: parts[0]?.trim() || "University",
-          degree: parts[1]?.trim() || "Bachelor's Degree",
-          field: parts[2]?.trim() || "Computer Science",
-          duration: parts[3]?.trim() || "2018 - 2022",
-          gpa: line.toLowerCase().includes('gpa') ? 
-            line.match(/gpa:?\s*(\d+\.?\d*)/i)?.[1] : undefined
-        });
-      }
-    }
-  }
-  
-  // Fallback education
-  if (education.length === 0) {
-    return [
-      {
-        institution: "University",
-        degree: "Bachelor of Science",
-        field: "Computer Science",
-        duration: "2018 - 2022"
-      }
-    ];
-  }
-  
-  return education;
-};
-
-const extractSkills = (text: string) => {
-  const technicalSkills = [];
-  const softSkills = [];
-  
-  // Common technical skills
-  const techKeywords = [
-    'javascript', 'python', 'java', 'react', 'angular', 'vue', 'node',
-    'typescript', 'html', 'css', 'sql', 'mongodb', 'postgresql', 'mysql',
-    'aws', 'azure', 'docker', 'kubernetes', 'git', 'jenkins', 'terraform',
-    'express', 'django', 'flask', 'spring', 'laravel', 'ruby', 'php',
-    'graphql', 'rest', 'api', 'microservices', 'redis', 'elasticsearch'
-  ];
-  
-  // Common soft skills
-  const softKeywords = [
-    'leadership', 'communication', 'teamwork', 'problem solving', 'analytical',
-    'project management', 'agile', 'scrum', 'mentoring', 'collaboration',
-    'time management', 'critical thinking', 'adaptability', 'creativity'
-  ];
-  
-  const lowerText = text.toLowerCase();
-  
-  // Extract technical skills
-  techKeywords.forEach(skill => {
-    if (lowerText.includes(skill)) {
-      const properCase = skill.charAt(0).toUpperCase() + skill.slice(1);
-      if (!technicalSkills.includes(properCase)) {
-        technicalSkills.push(properCase);
-      }
-    }
-  });
-  
-  // Extract soft skills
-  softKeywords.forEach(skill => {
-    if (lowerText.includes(skill)) {
-      const properCase = skill.split(' ').map(word => 
-        word.charAt(0).toUpperCase() + word.slice(1)
-      ).join(' ');
-      if (!softSkills.includes(properCase)) {
-        softSkills.push(properCase);
-      }
-    }
-  });
-  
-  return {
-    technical: technicalSkills.slice(0, 12),
-    soft: softSkills.slice(0, 8)
-  };
-};
-
-const extractProjects = (text: string) => {
-  const projects = [];
-  const lines = text.split('\n');
-  
-  let inProjectsSection = false;
-  let currentProject: any = null;
-  
-  for (const line of lines) {
-    const lowerLine = line.toLowerCase().trim();
-    
-    if (lowerLine.includes('project')) {
-      inProjectsSection = true;
-      continue;
-    }
-    
-    if (inProjectsSection && (lowerLine.includes('education') || 
-        lowerLine.includes('certification') || lowerLine.includes('achievement'))) {
-      if (currentProject) projects.push(currentProject);
-      break;
-    }
-    
-    if (inProjectsSection && line.trim()) {
-      // Look for project names (usually standalone lines or with technologies)
-      if (!line.startsWith('-') && !line.startsWith('•') && 
-          !line.toLowerCase().includes('technologies') &&
-          line.length > 5 && line.length < 100) {
-        
-        if (currentProject) projects.push(currentProject);
-        
-        currentProject = {
-          name: line.trim(),
-          description: "",
-          technologies: [],
-          link: ""
-        };
-      } else if (currentProject) {
-        if (line.toLowerCase().includes('technologies') || line.toLowerCase().includes('tech stack')) {
-          // Extract technologies from the line
-          const techMatch = line.match(/technologies?:?\s*(.+)/i);
-          if (techMatch) {
-            currentProject.technologies = techMatch[1]
-              .split(/[,\s]+/)
-              .map((tech: string) => tech.trim())
-              .filter((tech: string) => tech.length > 1);
-          }
-        } else if (!currentProject.description && line.length > 20) {
-          currentProject.description = line.trim();
-        }
-      }
-    }
-  }
-  
-  if (currentProject) projects.push(currentProject);
-  
-  // Fallback projects if none found
-  if (projects.length === 0) {
-    return [
-      {
-        name: "Web Application Project",
-        description: "Developed a full-stack web application with modern technologies.",
-        technologies: ["React", "Node.js", "PostgreSQL"],
-        link: ""
-      }
-    ];
-  }
-  
-  return projects.slice(0, 4);
 };
