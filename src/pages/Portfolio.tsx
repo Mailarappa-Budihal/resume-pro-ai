@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,6 +8,7 @@ import { Layout, Download, Eye, Sparkles, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useProfileData } from '@/hooks/useProfileData';
 import { generatePortfolio } from '@/services/aiService';
+import JSZip from 'jszip';
 
 const Portfolio = () => {
   const { profileData } = useProfileData();
