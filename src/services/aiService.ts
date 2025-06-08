@@ -1,72 +1,171 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import mammoth from 'mammoth';
 
-// Set up PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
-
-// Real PDF text extraction using PDF.js
-const extractTextFromPDF = async (file: File): Promise<string> => {
+// Configure PDF.js worker using a more reliable method
+const configurePDFWorker = () => {
   try {
-    console.log('Extracting text from PDF:', file.name);
-    const arrayBuffer = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    
-    let fullText = '';
-    
-    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-      const page = await pdf.getPage(pageNum);
-      const textContent = await page.getTextContent();
-      
-      const pageText = textContent.items
-        .map((item: any) => item.str)
-        .join(' ');
-      
-      fullText += pageText + '\n';
+    // Try to use the built-in worker from the package
+    if (typeof window !== 'undefined') {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+        'pdfjs-dist/build/pdf.worker.min.js',
+        import.meta.url
+      ).toString();
     }
-    
-    console.log('Extracted PDF text length:', fullText.length);
-    return fullText;
   } catch (error) {
-    console.error('PDF extraction error:', error);
-    throw new Error('Failed to extract text from PDF');
+    console.warn('Could not configure PDF worker, falling back to legacy method');
+    // Fallback to a different CDN
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
   }
 };
 
-// Real DOCX text extraction using mammoth
+// Initialize PDF worker
+configurePDFWorker();
+
+// Enhanced PDF text extraction with better error handling
+const extractTextFromPDF = async (file: File): Promise<string> => {
+  try {
+    console.log('Starting PDF text extraction for:', file.name);
+    
+    // Convert file to array buffer
+    const arrayBuffer = await file.arrayBuffer();
+    console.log('PDF file loaded, size:', arrayBuffer.byteLength, 'bytes');
+    
+    // Load PDF document
+    const loadingTask = pdfjsLib.getDocument({
+      data: arrayBuffer,
+      verbosity: 0, // Reduce console noise
+    });
+    
+    const pdf = await loadingTask.promise;
+    console.log('PDF loaded successfully, pages:', pdf.numPages);
+    
+    let fullText = '';
+    const maxPages = Math.min(pdf.numPages, 10); // Limit to first 10 pages for performance
+    
+    // Extract text from each page
+    for (let pageNum = 1; pageNum <= maxPages; pageNum++) {
+      try {
+        console.log(`Extracting text from page ${pageNum}/${maxPages}`);
+        
+        const page = await pdf.getPage(pageNum);
+        const textContent = await page.getTextContent();
+        
+        // Extract text items and join them
+        const pageText = textContent.items
+          .filter((item: any) => item.str && item.str.trim().length > 0)
+          .map((item: any) => {
+            // Handle text positioning to maintain some structure
+            const str = item.str.trim();
+            return str;
+          })
+          .join(' ');
+        
+        if (pageText.trim()) {
+          fullText += pageText + '\n\n';
+        }
+        
+        console.log(`Page ${pageNum} extracted ${pageText.length} characters`);
+        
+      } catch (pageError) {
+        console.warn(`Failed to extract text from page ${pageNum}:`, pageError);
+        // Continue with other pages
+      }
+    }
+    
+    // Clean up the extracted text
+    fullText = fullText
+      .replace(/\s+/g, ' ') // Replace multiple spaces with single space
+      .replace(/\n\s*\n/g, '\n') // Remove extra line breaks
+      .trim();
+    
+    console.log('Total extracted text length:', fullText.length);
+    console.log('Text preview:', fullText.substring(0, 200) + '...');
+    
+    if (fullText.length < 50) {
+      throw new Error('Extracted text is too short. The PDF might be image-based or corrupted.');
+    }
+    
+    return fullText;
+    
+  } catch (error) {
+    console.error('Detailed PDF extraction error:', error);
+    
+    if (error instanceof Error) {
+      if (error.message.includes('worker')) {
+        throw new Error('PDF processing failed due to worker configuration. Please try again or use a different file.');
+      } else if (error.message.includes('Invalid PDF')) {
+        throw new Error('The uploaded file appears to be corrupted or not a valid PDF.');
+      } else {
+        throw new Error(`PDF extraction failed: ${error.message}`);
+      }
+    }
+    
+    throw new Error('Failed to extract text from PDF. Please ensure the file is a valid, text-based PDF.');
+  }
+};
+
+// Enhanced DOCX text extraction
 const extractTextFromDOCX = async (file: File): Promise<string> => {
   try {
-    console.log('Extracting text from DOCX:', file.name);
+    console.log('Starting DOCX text extraction for:', file.name);
+    
     const arrayBuffer = await file.arrayBuffer();
+    console.log('DOCX file loaded, size:', arrayBuffer.byteLength, 'bytes');
+    
     const result = await mammoth.extractRawText({ arrayBuffer });
-    console.log('Extracted DOCX text length:', result.value.length);
-    return result.value;
+    
+    if (result.messages && result.messages.length > 0) {
+      console.warn('DOCX extraction warnings:', result.messages);
+    }
+    
+    const text = result.value.trim();
+    console.log('DOCX extracted text length:', text.length);
+    console.log('Text preview:', text.substring(0, 200) + '...');
+    
+    if (text.length < 50) {
+      throw new Error('Extracted text is too short. The DOCX file might be empty or corrupted.');
+    }
+    
+    return text;
+    
   } catch (error) {
     console.error('DOCX extraction error:', error);
-    throw new Error('Failed to extract text from DOCX');
+    throw new Error(`Failed to extract text from DOCX: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 };
 
 export const extractResumeData = async (file: File) => {
-  console.log('Starting resume data extraction for:', file.name);
+  console.log('=== Starting Resume Data Extraction ===');
+  console.log('File details:', {
+    name: file.name,
+    type: file.type,
+    size: `${(file.size / 1024 / 1024).toFixed(2)} MB`
+  });
   
   let resumeText: string;
   
   try {
-    if (file.type.includes('pdf')) {
+    // Extract text based on file type
+    if (file.type.includes('pdf') || file.name.toLowerCase().endsWith('.pdf')) {
+      console.log('Processing as PDF file...');
       resumeText = await extractTextFromPDF(file);
-    } else if (file.name.endsWith('.docx')) {
+    } else if (file.name.toLowerCase().endsWith('.docx')) {
+      console.log('Processing as DOCX file...');
       resumeText = await extractTextFromDOCX(file);
     } else {
-      throw new Error('Unsupported file type');
+      throw new Error(`Unsupported file type: ${file.type}. Please upload a PDF or DOCX file.`);
     }
     
     if (!resumeText || resumeText.trim().length < 50) {
-      throw new Error('Could not extract sufficient text from the document');
+      throw new Error('Could not extract sufficient text from the document. Please ensure the file contains readable text content.');
     }
     
-    console.log('Extracted text preview:', resumeText.substring(0, 500));
+    console.log('=== Text Extraction Successful ===');
+    console.log('Extracted text length:', resumeText.length);
     
     // Parse the extracted text into structured data
+    console.log('=== Starting Data Parsing ===');
+    
     const extractedData = {
       personalInfo: {
         name: extractName(resumeText),
@@ -82,12 +181,27 @@ export const extractResumeData = async (file: File) => {
       projects: extractProjects(resumeText)
     };
     
-    console.log('Successfully extracted profile data:', extractedData);
+    console.log('=== Data Extraction Complete ===');
+    console.log('Successfully extracted profile data:', {
+      name: extractedData.personalInfo.name,
+      email: extractedData.personalInfo.email,
+      experienceCount: extractedData.experience.length,
+      educationCount: extractedData.education.length,
+      technicalSkills: extractedData.skills.technical.length,
+      projectsCount: extractedData.projects.length
+    });
+    
     return extractedData;
     
   } catch (error) {
-    console.error('Resume extraction failed:', error);
-    throw error;
+    console.error('=== Resume Extraction Failed ===');
+    console.error('Error details:', error);
+    
+    if (error instanceof Error) {
+      throw error;
+    }
+    
+    throw new Error('An unexpected error occurred while processing your resume. Please try again.');
   }
 };
 
