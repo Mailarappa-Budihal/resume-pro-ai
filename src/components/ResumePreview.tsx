@@ -2,78 +2,28 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { FileText, Download, ZoomIn, ZoomOut, AlertCircle } from 'lucide-react';
-import * as pdfjsLib from 'pdfjs-dist';
-
-// Set up PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+import { FileText, Download, AlertCircle, ExternalLink } from 'lucide-react';
 
 interface ResumePreviewProps {
   file: File;
 }
 
 export const ResumePreview = ({ file }: ResumePreviewProps) => {
-  const [pdfUrl, setPdfUrl] = useState<string>('');
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(0);
-  const [scale, setScale] = useState(1.2);
-  const [canvasRef, setCanvasRef] = useState<HTMLCanvasElement | null>(null);
+  const [fileUrl, setFileUrl] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string>('');
 
   useEffect(() => {
     if (file) {
       const url = URL.createObjectURL(file);
-      setPdfUrl(url);
+      setFileUrl(url);
+      setIsLoading(false);
       
       return () => {
         URL.revokeObjectURL(url);
       };
     }
   }, [file]);
-
-  useEffect(() => {
-    if (pdfUrl && canvasRef && file.type.includes('pdf')) {
-      renderPDF();
-    } else if (file.name.endsWith('.docx')) {
-      setIsLoading(false);
-    }
-  }, [pdfUrl, currentPage, scale, canvasRef]);
-
-  const renderPDF = async () => {
-    if (!pdfUrl || !canvasRef) return;
-
-    setIsLoading(true);
-    setError('');
-
-    try {
-      const pdf = await pdfjsLib.getDocument(pdfUrl).promise;
-      setTotalPages(pdf.numPages);
-
-      const page = await pdf.getPage(currentPage);
-      const viewport = page.getViewport({ scale });
-
-      const context = canvasRef.getContext('2d');
-      if (!context) {
-        throw new Error('Could not get canvas context');
-      }
-
-      canvasRef.height = viewport.height;
-      canvasRef.width = viewport.width;
-
-      const renderContext = {
-        canvasContext: context,
-        viewport: viewport
-      };
-
-      await page.render(renderContext).promise;
-      setIsLoading(false);
-    } catch (err) {
-      console.error('Error rendering PDF:', err);
-      setError('Failed to load PDF preview. Please ensure the file is a valid PDF.');
-      setIsLoading(false);
-    }
-  };
 
   const downloadFile = () => {
     const url = URL.createObjectURL(file);
@@ -86,8 +36,11 @@ export const ResumePreview = ({ file }: ResumePreviewProps) => {
     URL.revokeObjectURL(url);
   };
 
-  const zoomIn = () => setScale(prev => Math.min(prev + 0.2, 3));
-  const zoomOut = () => setScale(prev => Math.max(prev - 0.2, 0.5));
+  const openInNewTab = () => {
+    if (fileUrl) {
+      window.open(fileUrl, '_blank');
+    }
+  };
 
   if (file.name.endsWith('.docx')) {
     return (
@@ -128,14 +81,9 @@ export const ResumePreview = ({ file }: ResumePreviewProps) => {
             PDF Resume Preview
           </CardTitle>
           <div className="flex items-center gap-2">
-            <Button onClick={zoomOut} size="sm" variant="outline" disabled={isLoading}>
-              <ZoomOut className="w-4 h-4" />
-            </Button>
-            <span className="text-sm text-gray-600 min-w-16 text-center">
-              {Math.round(scale * 100)}%
-            </span>
-            <Button onClick={zoomIn} size="sm" variant="outline" disabled={isLoading}>
-              <ZoomIn className="w-4 h-4" />
+            <Button onClick={openInNewTab} size="sm" variant="outline">
+              <ExternalLink className="w-4 h-4 mr-1" />
+              Open in New Tab
             </Button>
             <Button onClick={downloadFile} size="sm" variant="outline">
               <Download className="w-4 h-4" />
@@ -145,39 +93,13 @@ export const ResumePreview = ({ file }: ResumePreviewProps) => {
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
-          {/* Page Navigation */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-center gap-4 p-4 bg-gray-50 rounded-lg">
-              <Button
-                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                disabled={currentPage === 1 || isLoading}
-                size="sm"
-                variant="outline"
-              >
-                Previous
-              </Button>
-              <span className="text-sm text-gray-700 font-medium">
-                Page {currentPage} of {totalPages}
-              </span>
-              <Button
-                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                disabled={currentPage === totalPages || isLoading}
-                size="sm"
-                variant="outline"
-              >
-                Next
-              </Button>
-            </div>
-          )}
-
-          {/* PDF Canvas Container */}
-          <div className="border-2 border-gray-200 rounded-lg overflow-auto bg-gray-50 flex justify-center min-h-[500px] relative">
+          {/* PDF Viewer */}
+          <div className="border-2 border-gray-200 rounded-lg overflow-hidden bg-gray-50 min-h-[600px] relative">
             {isLoading && (
               <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-90 z-10">
                 <div className="text-center">
                   <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
                   <p className="text-gray-700 font-medium">Loading PDF preview...</p>
-                  <p className="text-gray-500 text-sm">Please wait while we render your resume</p>
                 </div>
               </div>
             )}
@@ -188,22 +110,25 @@ export const ResumePreview = ({ file }: ResumePreviewProps) => {
                   <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
                   <h3 className="text-lg font-semibold text-red-700 mb-2">Preview Error</h3>
                   <p className="text-red-600 mb-4">{error}</p>
-                  <Button onClick={() => window.location.reload()} variant="outline" size="sm">
-                    Try Again
+                  <Button onClick={openInNewTab} variant="outline" size="sm">
+                    Open in New Tab
                   </Button>
                 </div>
               </div>
             )}
             
-            <canvas
-              ref={setCanvasRef}
-              className={`max-w-full shadow-lg bg-white ${isLoading || error ? 'hidden' : ''}`}
-              style={{ 
-                boxShadow: '0 8px 30px rgba(0, 0, 0, 0.12)',
-                borderRadius: '8px',
-                margin: '20px'
-              }}
-            />
+            {fileUrl && !isLoading && !error && (
+              <iframe
+                src={fileUrl}
+                className="w-full h-[600px]"
+                title="PDF Preview"
+                onLoad={() => setIsLoading(false)}
+                onError={() => {
+                  setError('Unable to preview PDF in browser. Please download or open in a new tab.');
+                  setIsLoading(false);
+                }}
+              />
+            )}
           </div>
 
           {/* File Info */}
