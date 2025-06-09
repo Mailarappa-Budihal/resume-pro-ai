@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -8,6 +9,7 @@ import { Layout, Download, Eye, Sparkles, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useProfileData } from '@/hooks/useProfileData';
 import { generatePortfolio } from '@/services/aiService';
+import { PortfolioPreview } from '@/components/PortfolioPreview';
 import JSZip from 'jszip';
 
 const Portfolio = () => {
@@ -15,6 +17,7 @@ const Portfolio = () => {
   const [selectedTemplate, setSelectedTemplate] = useState('');
   const [targetRole, setTargetRole] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [portfolioData, setPortfolioData] = useState<any>(null);
   const { toast } = useToast();
 
   const templates = [
@@ -66,12 +69,52 @@ const Portfolio = () => {
     setIsGenerating(true);
     
     try {
-      const portfolioFiles = await generatePortfolio(profileData, selectedTemplate, targetRole);
+      const portfolioResult = await generatePortfolio(profileData, selectedTemplate, targetRole);
+      setPortfolioData(portfolioResult);
       
-      // Create and download ZIP file
+      toast({
+        title: "Portfolio Generated Successfully!",
+        description: "Your personalized portfolio is ready for preview and download.",
+      });
+    } catch (error) {
+      toast({
+        title: "Generation Failed",
+        description: "There was an error generating your portfolio. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleDownload = async () => {
+    if (!portfolioData || !profileData) return;
+
+    try {
       const zip = new JSZip();
-      zip.file('index.html', portfolioFiles.html);
-      zip.file('styles.css', portfolioFiles.css);
+      zip.file('index.html', portfolioData.html);
+      zip.file('styles.css', portfolioData.css);
+      
+      // Add a README file with instructions
+      const readme = `# ${profileData.personalInfo.name} Portfolio
+
+This portfolio was generated using AI-powered resume analysis.
+
+## Files Included:
+- index.html - Main portfolio page
+- styles.css - Stylesheet for the portfolio
+
+## Hosting Instructions:
+1. Upload both files to your web hosting service
+2. Make sure index.html is in the root directory
+3. Your portfolio will be accessible at your domain
+
+## Customization:
+You can edit the HTML and CSS files to further customize your portfolio.
+
+Generated on: ${new Date().toLocaleDateString()}
+`;
+      zip.file('README.md', readme);
       
       const blob = await zip.generateAsync({ type: 'blob' });
       const url = URL.createObjectURL(blob);
@@ -84,17 +127,15 @@ const Portfolio = () => {
       URL.revokeObjectURL(url);
 
       toast({
-        title: "Portfolio Generated Successfully!",
-        description: "Your personalized portfolio has been downloaded as a ZIP file.",
+        title: "Portfolio Downloaded!",
+        description: "Your portfolio package has been downloaded successfully.",
       });
     } catch (error) {
       toast({
-        title: "Generation Failed",
-        description: "There was an error generating your portfolio. Please try again.",
+        title: "Download Failed",
+        description: "There was an error downloading your portfolio. Please try again.",
         variant: "destructive",
       });
-    } finally {
-      setIsGenerating(false);
     }
   };
 
@@ -150,115 +191,120 @@ const Portfolio = () => {
           </Card>
         )}
 
+        {/* Portfolio Preview */}
+        {portfolioData && (
+          <PortfolioPreview
+            portfolioData={portfolioData}
+            onClose={() => setPortfolioData(null)}
+            onDownload={handleDownload}
+          />
+        )}
+
         {/* Configuration Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Sparkles className="w-5 h-5" />
-              Portfolio Configuration
-            </CardTitle>
-            <CardDescription>
-              Customize your portfolio generation settings for optimal results
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <Label htmlFor="target-role">Target Job Role (Optional)</Label>
-              <Input
-                id="target-role"
-                placeholder="e.g., Senior Software Engineer, Frontend Developer, Full Stack Developer"
-                value={targetRole}
-                onChange={(e) => setTargetRole(e.target.value)}
-              />
-              <p className="text-sm text-gray-500 mt-1">
-                Specify a role to tailor your portfolio content and highlight relevant skills
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+        {!portfolioData && (
+          <>
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Sparkles className="w-5 h-5" />
+                  Portfolio Configuration
+                </CardTitle>
+                <CardDescription>
+                  Customize your portfolio generation settings for optimal results
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <Label htmlFor="target-role">Target Job Role (Optional)</Label>
+                  <Input
+                    id="target-role"
+                    placeholder="e.g., Senior Software Engineer, Frontend Developer, Full Stack Developer"
+                    value={targetRole}
+                    onChange={(e) => setTargetRole(e.target.value)}
+                  />
+                  <p className="text-sm text-gray-500 mt-1">
+                    Specify a role to tailor your portfolio content and highlight relevant skills
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
 
-        {/* Template Selection */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Choose Your Template</CardTitle>
-            <CardDescription>
-              Select a professional design template that matches your style and target role
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {templates.map((template) => (
-                <Card 
-                  key={template.id}
-                  className={`cursor-pointer transition-all duration-200 ${
-                    selectedTemplate === template.id 
-                      ? 'ring-2 ring-blue-500 shadow-md bg-blue-50' 
-                      : 'hover:shadow-lg hover:bg-gray-50'
-                  }`}
-                  onClick={() => setSelectedTemplate(template.id)}
-                >
-                  <CardContent className="p-4">
-                    <div className="aspect-video bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg mb-3 flex items-center justify-center">
-                      <Layout className="w-8 h-8 text-gray-400" />
-                    </div>
-                    <h3 className="font-semibold text-gray-900 mb-1">{template.name}</h3>
-                    <p className="text-sm text-gray-600 mb-2">{template.description}</p>
-                    {selectedTemplate === template.id && (
-                      <div className="flex items-center gap-1 text-blue-600 text-sm font-medium">
-                        <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
-                        Selected Template
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+            {/* Template Selection */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Choose Your Template</CardTitle>
+                <CardDescription>
+                  Select a professional design template that matches your style and target role
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {templates.map((template) => (
+                    <Card 
+                      key={template.id}
+                      className={`cursor-pointer transition-all duration-200 ${
+                        selectedTemplate === template.id 
+                          ? 'ring-2 ring-blue-500 shadow-md bg-blue-50' 
+                          : 'hover:shadow-lg hover:bg-gray-50'
+                      }`}
+                      onClick={() => setSelectedTemplate(template.id)}
+                    >
+                      <CardContent className="p-4">
+                        <div className="aspect-video bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg mb-3 flex items-center justify-center">
+                          <Layout className="w-8 h-8 text-gray-400" />
+                        </div>
+                        <h3 className="font-semibold text-gray-900 mb-1">{template.name}</h3>
+                        <p className="text-sm text-gray-600 mb-2">{template.description}</p>
+                        {selectedTemplate === template.id && (
+                          <div className="flex items-center gap-1 text-blue-600 text-sm font-medium">
+                            <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
+                            Selected Template
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
 
-        {/* Generate Button */}
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-1">Ready to Generate Your Portfolio?</h3>
-                <p className="text-gray-600">
-                  {profileData 
-                    ? "Your portfolio will be generated using your extracted profile data and selected template"
-                    : "Upload your resume first to enable portfolio generation"
-                  }
-                </p>
-              </div>
-              <div className="flex gap-3">
-                <Button 
-                  variant="outline" 
-                  className="flex items-center gap-2"
-                  disabled={!profileData || !selectedTemplate || isGenerating}
-                >
-                  <Eye className="w-4 h-4" />
-                  Preview
-                </Button>
-                <Button 
-                  onClick={handleGenerate}
-                  disabled={!profileData || !selectedTemplate || isGenerating}
-                  className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700"
-                >
-                  {isGenerating ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      Generating...
-                    </>
-                  ) : (
-                    <>
-                      <Download className="w-4 h-4" />
-                      Generate Portfolio
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            {/* Generate Button */}
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-1">Ready to Generate Your Portfolio?</h3>
+                    <p className="text-gray-600">
+                      {profileData 
+                        ? "Your portfolio will be generated using your extracted profile data and selected template"
+                        : "Upload your resume first to enable portfolio generation"
+                      }
+                    </p>
+                  </div>
+                  <div className="flex gap-3">
+                    <Button 
+                      onClick={handleGenerate}
+                      disabled={!profileData || !selectedTemplate || isGenerating}
+                      className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700"
+                    >
+                      {isGenerating ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          Generating...
+                        </>
+                      ) : (
+                        <>
+                          <Eye className="w-4 h-4" />
+                          Generate & Preview
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </>
+        )}
 
         {/* AI Features Info */}
         <Card className="bg-purple-50 border-purple-200">
@@ -273,8 +319,8 @@ const Portfolio = () => {
                   <li>• Automatically generates compelling copy from your extracted resume data</li>
                   <li>• Tailors content to your specified target role and experience level</li>
                   <li>• Creates responsive, modern website files optimized for all devices</li>
-                  <li>• Includes downloadable HTML, CSS, and complete portfolio package</li>
-                  <li>• Optimized for professional presentation and ATS compatibility</li>
+                  <li>• Includes live preview and downloadable HTML/CSS package</li>
+                  <li>• Optimized for professional presentation and easy hosting</li>
                   <li>• Uses advanced AI to highlight your most relevant achievements</li>
                 </ul>
               </div>

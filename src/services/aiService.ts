@@ -1,19 +1,14 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import mammoth from 'mammoth';
 
-// Configure PDF.js worker using a more reliable method
+// Configure PDF.js worker with better error handling
 const configurePDFWorker = () => {
   try {
-    // Try to use the built-in worker from the package
-    if (typeof window !== 'undefined') {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-        'pdfjs-dist/build/pdf.worker.min.js',
-        import.meta.url
-      ).toString();
-    }
+    // Use a more reliable CDN for the worker
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
   } catch (error) {
-    console.warn('Could not configure PDF worker, falling back to legacy method');
-    // Fallback to a different CDN
+    console.warn('Could not configure PDF worker:', error);
+    // Fallback to unpkg
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
   }
 };
@@ -21,90 +16,112 @@ const configurePDFWorker = () => {
 // Initialize PDF worker
 configurePDFWorker();
 
-// Enhanced PDF text extraction with better error handling
+// Improved PDF text extraction with better text positioning
 const extractTextFromPDF = async (file: File): Promise<string> => {
   try {
     console.log('Starting PDF text extraction for:', file.name);
     
-    // Convert file to array buffer
     const arrayBuffer = await file.arrayBuffer();
     console.log('PDF file loaded, size:', arrayBuffer.byteLength, 'bytes');
     
-    // Load PDF document
     const loadingTask = pdfjsLib.getDocument({
       data: arrayBuffer,
-      verbosity: 0, // Reduce console noise
+      verbosity: 0,
+      useSystemFonts: true,
+      standardFontDataUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/',
     });
     
     const pdf = await loadingTask.promise;
     console.log('PDF loaded successfully, pages:', pdf.numPages);
     
     let fullText = '';
-    const maxPages = Math.min(pdf.numPages, 10); // Limit to first 10 pages for performance
+    const maxPages = Math.min(pdf.numPages, 15);
     
-    // Extract text from each page
     for (let pageNum = 1; pageNum <= maxPages; pageNum++) {
       try {
-        console.log(`Extracting text from page ${pageNum}/${maxPages}`);
+        console.log(`Processing page ${pageNum}/${maxPages}`);
         
         const page = await pdf.getPage(pageNum);
-        const textContent = await page.getTextContent();
+        const textContent = await page.getTextContent({
+          normalizeWhitespace: true,
+          disableCombineTextItems: false
+        });
         
-        // Extract text items and join them
-        const pageText = textContent.items
+        // Better text extraction with positioning
+        const textItems = textContent.items
           .filter((item: any) => item.str && item.str.trim().length > 0)
-          .map((item: any) => {
-            // Handle text positioning to maintain some structure
-            const str = item.str.trim();
-            return str;
-          })
-          .join(' ');
+          .sort((a: any, b: any) => {
+            // Sort by Y position (top to bottom), then X position (left to right)
+            const yDiff = Math.abs(b.transform[5] - a.transform[5]);
+            if (yDiff > 5) return b.transform[5] - a.transform[5];
+            return a.transform[4] - b.transform[4];
+          });
+        
+        let pageText = '';
+        let lastY = null;
+        
+        for (const item of textItems) {
+          const currentY = Math.round(item.transform[5]);
+          const text = item.str.trim();
+          
+          if (text.length === 0) continue;
+          
+          // Add line break if we're on a significantly different Y position
+          if (lastY !== null && Math.abs(currentY - lastY) > 5) {
+            pageText += '\n';
+          }
+          
+          pageText += text + ' ';
+          lastY = currentY;
+        }
         
         if (pageText.trim()) {
-          fullText += pageText + '\n\n';
+          fullText += pageText.trim() + '\n\n';
         }
         
         console.log(`Page ${pageNum} extracted ${pageText.length} characters`);
         
       } catch (pageError) {
         console.warn(`Failed to extract text from page ${pageNum}:`, pageError);
-        // Continue with other pages
+        continue;
       }
     }
     
     // Clean up the extracted text
     fullText = fullText
-      .replace(/\s+/g, ' ') // Replace multiple spaces with single space
-      .replace(/\n\s*\n/g, '\n') // Remove extra line breaks
+      .replace(/\s{3,}/g, ' ') // Replace multiple spaces
+      .replace(/\n{3,}/g, '\n\n') // Replace multiple line breaks
+      .replace(/([a-z])([A-Z])/g, '$1 $2') // Add space between camelCase
       .trim();
     
     console.log('Total extracted text length:', fullText.length);
-    console.log('Text preview:', fullText.substring(0, 200) + '...');
+    console.log('Text preview:', fullText.substring(0, 300) + '...');
     
-    if (fullText.length < 50) {
-      throw new Error('Extracted text is too short. The PDF might be image-based or corrupted.');
+    if (fullText.length < 100) {
+      throw new Error('Insufficient text extracted. The PDF might be image-based, corrupted, or contain very little text content.');
     }
     
     return fullText;
     
   } catch (error) {
-    console.error('Detailed PDF extraction error:', error);
+    console.error('PDF extraction error:', error);
     
     if (error instanceof Error) {
       if (error.message.includes('worker')) {
-        throw new Error('PDF processing failed due to worker configuration. Please try again or use a different file.');
+        throw new Error('PDF processing failed. Please try refreshing the page or use a different PDF file.');
       } else if (error.message.includes('Invalid PDF')) {
-        throw new Error('The uploaded file appears to be corrupted or not a valid PDF.');
-      } else {
-        throw new Error(`PDF extraction failed: ${error.message}`);
+        throw new Error('The file appears to be corrupted or not a valid PDF. Please try a different file.');
+      } else if (error.message.includes('Insufficient text')) {
+        throw new Error('Could not extract enough text from the PDF. This might be a scanned document or image-based PDF. Please try a text-based PDF or DOCX file instead.');
       }
+      throw new Error(`PDF extraction failed: ${error.message}`);
     }
     
-    throw new Error('Failed to extract text from PDF. Please ensure the file is a valid, text-based PDF.');
+    throw new Error('Failed to process PDF file. Please try a different file or format.');
   }
 };
 
-// Enhanced DOCX text extraction
+// Enhanced DOCX text extraction with better formatting
 const extractTextFromDOCX = async (file: File): Promise<string> => {
   try {
     console.log('Starting DOCX text extraction for:', file.name);
@@ -112,18 +129,29 @@ const extractTextFromDOCX = async (file: File): Promise<string> => {
     const arrayBuffer = await file.arrayBuffer();
     console.log('DOCX file loaded, size:', arrayBuffer.byteLength, 'bytes');
     
-    const result = await mammoth.extractRawText({ arrayBuffer });
+    const result = await mammoth.extractRawText({ 
+      arrayBuffer,
+      options: {
+        includeDefaultStyleMap: true
+      }
+    });
     
     if (result.messages && result.messages.length > 0) {
       console.warn('DOCX extraction warnings:', result.messages);
     }
     
-    const text = result.value.trim();
-    console.log('DOCX extracted text length:', text.length);
-    console.log('Text preview:', text.substring(0, 200) + '...');
+    let text = result.value
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n')
+      .replace(/\t/g, ' ')
+      .replace(/\s{3,}/g, ' ')
+      .trim();
     
-    if (text.length < 50) {
-      throw new Error('Extracted text is too short. The DOCX file might be empty or corrupted.');
+    console.log('DOCX extracted text length:', text.length);
+    console.log('Text preview:', text.substring(0, 300) + '...');
+    
+    if (text.length < 100) {
+      throw new Error('Insufficient text extracted from DOCX. The file might be empty, corrupted, or contain mostly images.');
     }
     
     return text;
@@ -156,14 +184,14 @@ export const extractResumeData = async (file: File) => {
       throw new Error(`Unsupported file type: ${file.type}. Please upload a PDF or DOCX file.`);
     }
     
-    if (!resumeText || resumeText.trim().length < 50) {
-      throw new Error('Could not extract sufficient text from the document. Please ensure the file contains readable text content.');
+    if (!resumeText || resumeText.trim().length < 100) {
+      throw new Error('Could not extract sufficient text from the document. Please ensure the file contains readable text content and try again.');
     }
     
     console.log('=== Text Extraction Successful ===');
     console.log('Extracted text length:', resumeText.length);
     
-    // Parse the extracted text into structured data
+    // Parse the extracted text into structured data with improved algorithms
     console.log('=== Starting Data Parsing ===');
     
     const extractedData = {
@@ -201,34 +229,58 @@ export const extractResumeData = async (file: File) => {
       throw error;
     }
     
-    throw new Error('An unexpected error occurred while processing your resume. Please try again.');
+    throw new Error('An unexpected error occurred while processing your resume. Please try again with a different file.');
   }
 };
 
-// Enhanced name extraction
+// Improved name extraction with better patterns
 const extractName = (text: string): string => {
   const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
   
-  for (let i = 0; i < Math.min(10, lines.length); i++) {
+  // Try to find name in the first few lines
+  for (let i = 0; i < Math.min(8, lines.length); i++) {
     const line = lines[i];
     
-    // Skip lines that are clearly not names
+    // Skip obvious non-names
     if (line.toLowerCase().includes('resume') || 
         line.toLowerCase().includes('curriculum') ||
+        line.toLowerCase().includes('cv') ||
         line.includes('@') || 
         line.includes('(') || 
         line.includes('http') ||
+        line.includes('www.') ||
+        /^\d/.test(line) ||
         line.length < 3 || 
-        line.length > 60) {
+        line.length > 50) {
       continue;
     }
     
-    // Check if line looks like a name
-    const namePattern = /^[A-Za-z\s\-'\.]{3,50}$/;
+    // Enhanced name pattern
+    const namePattern = /^[A-Za-z][A-Za-z\s\-'\.]{2,49}$/;
     if (namePattern.test(line)) {
-      const words = line.split(/\s+/);
+      const words = line.split(/\s+/).filter(word => word.length > 0);
       if (words.length >= 2 && words.length <= 4) {
-        return line;
+        // Check if all words look like name parts
+        const validNameWords = words.every(word => 
+          /^[A-Za-z][A-Za-z\-'\.]*$/.test(word) && 
+          word.length >= 2 && 
+          word.length <= 20
+        );
+        if (validNameWords) {
+          return words.map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ');
+        }
+      }
+    }
+  }
+  
+  // Try pattern matching in the entire first section
+  const firstSection = lines.slice(0, 15).join(' ');
+  const nameMatches = firstSection.match(/\b[A-Z][a-z]+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\b/g);
+  
+  if (nameMatches && nameMatches.length > 0) {
+    for (const match of nameMatches) {
+      if (match.length <= 50 && !match.toLowerCase().includes('resume')) {
+        return match;
       }
     }
   }
@@ -236,14 +288,12 @@ const extractName = (text: string): string => {
   return "Name Not Found";
 };
 
-// Enhanced email extraction
 const extractEmail = (text: string): string => {
   const emailPattern = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
   const matches = text.match(emailPattern);
   return matches && matches.length > 0 ? matches[0] : "email@example.com";
 };
 
-// Enhanced phone extraction
 const extractPhone = (text: string): string => {
   const phonePatterns = [
     /(?:\+?1[-.\s]?)?\(?([0-9]{3})\)?[-.\s]?([0-9]{3})[-.\s]?([0-9]{4})/,
@@ -260,7 +310,6 @@ const extractPhone = (text: string): string => {
   return "Phone Not Found";
 };
 
-// Enhanced location extraction
 const extractLocation = (text: string): string => {
   const locationPatterns = [
     /([A-Za-z\s]+),\s*([A-Z]{2})\b/,
@@ -280,34 +329,41 @@ const extractLocation = (text: string): string => {
   return "Location Not Found";
 };
 
-// Enhanced title extraction
 const extractTitle = (text: string): string => {
   const titleKeywords = [
-    'developer', 'engineer', 'analyst', 'manager', 'designer', 
-    'consultant', 'specialist', 'lead', 'senior', 'junior',
-    'architect', 'director', 'coordinator', 'administrator',
-    'programmer', 'technician', 'supervisor', 'executive'
+    'developer', 'engineer', 'analyst', 'manager', 'designer', 'consultant', 
+    'specialist', 'lead', 'senior', 'junior', 'architect', 'director', 
+    'coordinator', 'administrator', 'programmer', 'technician', 'supervisor', 
+    'executive', 'scientist', 'researcher', 'associate', 'intern', 'trainee'
   ];
   
   const lines = text.split('\n').map(line => line.trim());
   
-  for (let i = 0; i < Math.min(15, lines.length); i++) {
+  // Look for title near the top of the resume
+  for (let i = 0; i < Math.min(20, lines.length); i++) {
     const line = lines[i];
     const lowerLine = line.toLowerCase();
     
-    if (titleKeywords.some(keyword => lowerLine.includes(keyword)) && 
-        line.length < 100 && 
-        !line.includes('@') &&
-        !line.includes('(') &&
-        !line.includes('http')) {
-      return line;
+    // Skip name line and contact info
+    if (line.includes('@') || line.includes('(') || line.includes('http') || line.length < 10) {
+      continue;
+    }
+    
+    // Check if line contains title keywords
+    const hasKeyword = titleKeywords.some(keyword => lowerLine.includes(keyword));
+    
+    if (hasKeyword && line.length < 80 && line.length > 5) {
+      // Clean up the title
+      let title = line.replace(/[^\w\s\-]/g, '').trim();
+      if (title.length > 5 && title.length < 60) {
+        return title;
+      }
     }
   }
   
   return "Professional Title Not Found";
 };
 
-// Enhanced summary extraction
 const extractSummary = (text: string): string => {
   const summaryKeywords = ['summary', 'objective', 'profile', 'overview', 'about', 'introduction'];
   const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
@@ -339,14 +395,13 @@ const extractSummary = (text: string): string => {
     
     const summary = lines.slice(summaryStart, summaryEnd).join(' ').trim();
     if (summary.length > 50) {
-      return summary.substring(0, 800);
+      return summary.substring(0, 500);
     }
   }
   
   return "Professional summary not found in resume";
 };
 
-// Enhanced experience extraction
 const extractExperience = (text: string) => {
   const experiences = [];
   const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
@@ -370,7 +425,6 @@ const extractExperience = (text: string) => {
     }
     
     if (inExperienceSection && line) {
-      // Look for company/position patterns
       if (line.includes('|') || (line.includes('-') && !line.startsWith('-') && !line.startsWith('•'))) {
         if (currentExp) experiences.push(currentExp);
         
@@ -406,7 +460,6 @@ const extractExperience = (text: string) => {
   }];
 };
 
-// Enhanced education extraction
 const extractEducation = (text: string) => {
   const education = [];
   const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
@@ -454,14 +507,12 @@ const extractEducation = (text: string) => {
   }];
 };
 
-// Enhanced skills extraction
 const extractSkills = (text: string) => {
   const lowerText = text.toLowerCase();
   
   const techSkillsFound = [];
   const softSkillsFound = [];
   
-  // Comprehensive technical skills list
   const techSkills = [
     'javascript', 'python', 'java', 'react', 'angular', 'vue', 'node',
     'typescript', 'html', 'css', 'sql', 'mongodb', 'postgresql', 'mysql',
@@ -472,7 +523,6 @@ const extractSkills = (text: string) => {
     'figma', 'photoshop', 'illustrator', 'sketch', 'tableau', 'powerbi'
   ];
   
-  // Comprehensive soft skills list
   const softSkills = [
     'leadership', 'communication', 'teamwork', 'problem solving', 'analytical',
     'project management', 'agile', 'scrum', 'mentoring', 'collaboration',
@@ -480,7 +530,6 @@ const extractSkills = (text: string) => {
     'strategic planning', 'negotiation', 'presentation', 'customer service'
   ];
   
-  // Extract technical skills
   techSkills.forEach(skill => {
     if (lowerText.includes(skill)) {
       const properCase = skill.charAt(0).toUpperCase() + skill.slice(1);
@@ -490,7 +539,6 @@ const extractSkills = (text: string) => {
     }
   });
   
-  // Extract soft skills
   softSkills.forEach(skill => {
     if (lowerText.includes(skill)) {
       const properCase = skill.split(' ').map(word => 
@@ -508,7 +556,6 @@ const extractSkills = (text: string) => {
   };
 };
 
-// Enhanced projects extraction
 const extractProjects = (text: string) => {
   const projects = [];
   const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
@@ -569,18 +616,27 @@ const extractProjects = (text: string) => {
   }];
 };
 
-// Portfolio generation function
+// Portfolio generation with preview functionality
 export const generatePortfolio = async (profileData: any, template: string, targetRole: string = '') => {
   console.log('Generating portfolio with template:', template);
   
+  // Simulate processing time
   await new Promise(resolve => setTimeout(resolve, 2000));
   
   const portfolioContent = generatePortfolioContent(profileData, template, targetRole);
   
   return {
     html: portfolioContent.html,
-    css: portfolioContent.css
+    css: portfolioContent.css,
+    previewUrl: createPreviewUrl(portfolioContent.html, portfolioContent.css)
   };
+};
+
+// Create a preview URL for the portfolio
+const createPreviewUrl = (html: string, css: string): string => {
+  const fullHtml = html.replace('</head>', `<style>${css}</style></head>`);
+  const blob = new Blob([fullHtml], { type: 'text/html' });
+  return URL.createObjectURL(blob);
 };
 
 const generatePortfolioContent = (profileData: any, template: string, targetRole: string) => {
@@ -595,22 +651,25 @@ const generatePortfolioContent = (profileData: any, template: string, targetRole
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${personalInfo.name} - ${personalInfo.title}</title>
-    <link rel="stylesheet" href="styles.css">
+    <title>${personalInfo.name} - Professional Portfolio</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
-<body class="${template}">
+<body class="${template}-template">
+    <!-- Header Section -->
     <header class="hero-section">
         <div class="container">
             <div class="hero-content">
-                <div class="profile-image">
-                    <div class="avatar">${personalInfo.name.charAt(0)}</div>
+                <div class="profile-section">
+                    <div class="avatar">
+                        ${personalInfo.name.split(' ').map(n => n.charAt(0)).join('').substring(0, 2)}
+                    </div>
+                    <h1 class="name">${personalInfo.name}</h1>
+                    <h2 class="title">${personalInfo.title || 'Professional'}</h2>
+                    <p class="summary">${roleOptimizedSummary}</p>
                 </div>
-                <h1 class="name">${personalInfo.name}</h1>
-                <h2 class="title">${personalInfo.title}</h2>
-                <p class="summary">${roleOptimizedSummary}</p>
-                <div class="contact-info">
+                
+                <div class="contact-grid">
                     <div class="contact-item">
                         <i class="fas fa-envelope"></i>
                         <span>${personalInfo.email}</span>
@@ -628,40 +687,49 @@ const generatePortfolioContent = (profileData: any, template: string, targetRole
         </div>
     </header>
 
+    <!-- Skills Section -->
     <section class="skills-section">
         <div class="container">
-            <h2 class="section-title">Technical Expertise</h2>
+            <h2 class="section-title">Technical Skills</h2>
             <div class="skills-grid">
-                ${skills.technical.map(skill => `
-                    <div class="skill-tag">${skill}</div>
+                ${skills.technical.slice(0, 12).map(skill => `
+                    <div class="skill-badge">${skill}</div>
                 `).join('')}
             </div>
-            <h3 class="subsection-title">Core Competencies</h3>
-            <div class="soft-skills">
-                ${skills.soft.map(skill => `
-                    <div class="soft-skill">${skill}</div>
-                `).join('')}
-            </div>
+            
+            ${skills.soft.length > 0 ? `
+                <h3 class="subsection-title">Core Competencies</h3>
+                <div class="soft-skills-list">
+                    ${skills.soft.slice(0, 8).map(skill => `
+                        <span class="soft-skill">${skill}</span>
+                    `).join('')}
+                </div>
+            ` : ''}
         </div>
     </section>
 
+    <!-- Experience Section -->
     <section class="experience-section">
         <div class="container">
             <h2 class="section-title">Professional Experience</h2>
             <div class="timeline">
-                ${experience.map(exp => `
-                    <div class="timeline-item">
+                ${experience.map((exp, index) => `
+                    <div class="timeline-item ${index === 0 ? 'current' : ''}">
                         <div class="timeline-marker"></div>
                         <div class="timeline-content">
-                            <h3 class="position">${exp.position}</h3>
-                            <h4 class="company">${exp.company}</h4>
-                            <span class="duration">${exp.duration}</span>
-                            <p class="description">${exp.description}</p>
-                            <ul class="achievements">
-                                ${exp.achievements.map(achievement => `
-                                    <li>${achievement}</li>
-                                `).join('')}
-                            </ul>
+                            <div class="experience-header">
+                                <h3 class="position">${exp.position}</h3>
+                                <h4 class="company">${exp.company}</h4>
+                                <span class="duration">${exp.duration}</span>
+                            </div>
+                            ${exp.description ? `<p class="description">${exp.description}</p>` : ''}
+                            ${exp.achievements.length > 0 ? `
+                                <ul class="achievements">
+                                    ${exp.achievements.slice(0, 5).map(achievement => `
+                                        <li>${achievement}</li>
+                                    `).join('')}
+                                </ul>
+                            ` : ''}
                         </div>
                     </div>
                 `).join('')}
@@ -669,34 +737,47 @@ const generatePortfolioContent = (profileData: any, template: string, targetRole
         </div>
     </section>
 
-    <section class="projects-section">
-        <div class="container">
-            <h2 class="section-title">Featured Projects</h2>
-            <div class="projects-grid">
-                ${projects.map(project => `
-                    <div class="project-card">
-                        <h3 class="project-name">${project.name}</h3>
-                        <p class="project-description">${project.description}</p>
-                        <div class="project-tech">
-                            ${project.technologies.map(tech => `
-                                <span class="tech-tag">${tech}</span>
-                            `).join('')}
+    <!-- Projects Section -->
+    ${projects.length > 0 && projects[0].name !== 'Projects not found' ? `
+        <section class="projects-section">
+            <div class="container">
+                <h2 class="section-title">Featured Projects</h2>
+                <div class="projects-grid">
+                    ${projects.slice(0, 6).map(project => `
+                        <div class="project-card">
+                            <div class="project-header">
+                                <h3 class="project-name">${project.name}</h3>
+                                ${project.link ? `
+                                    <a href="${project.link}" class="project-link" target="_blank">
+                                        <i class="fas fa-external-link-alt"></i>
+                                    </a>
+                                ` : ''}
+                            </div>
+                            <p class="project-description">${project.description}</p>
+                            ${project.technologies.length > 0 ? `
+                                <div class="project-tech">
+                                    ${project.technologies.slice(0, 5).map(tech => `
+                                        <span class="tech-tag">${tech}</span>
+                                    `).join('')}
+                                </div>
+                            ` : ''}
                         </div>
-                        ${project.link ? `<a href="${project.link}" class="project-link">View Project</a>` : ''}
-                    </div>
-                `).join('')}
+                    `).join('')}
+                </div>
             </div>
-        </div>
-    </section>
+        </section>
+    ` : ''}
 
+    <!-- Education Section -->
     <section class="education-section">
         <div class="container">
             <h2 class="section-title">Education</h2>
-            <div class="education-list">
+            <div class="education-grid">
                 ${education.map(edu => `
-                    <div class="education-item">
-                        <h3 class="degree">${edu.degree} in ${edu.field}</h3>
-                        <h4 class="institution">${edu.institution}</h4>
+                    <div class="education-card">
+                        <h3 class="degree">${edu.degree}</h3>
+                        <h4 class="field">${edu.field}</h4>
+                        <p class="institution">${edu.institution}</p>
                         <span class="duration">${edu.duration}</span>
                         ${edu.gpa ? `<span class="gpa">GPA: ${edu.gpa}</span>` : ''}
                     </div>
@@ -705,11 +786,36 @@ const generatePortfolioContent = (profileData: any, template: string, targetRole
         </div>
     </section>
 
+    <!-- Footer -->
     <footer class="footer">
         <div class="container">
-            <p>&copy; 2024 ${personalInfo.name}. All rights reserved.</p>
+            <p>&copy; ${new Date().getFullYear()} ${personalInfo.name}. All rights reserved.</p>
+            <p class="tagline">Portfolio generated with AI-powered resume analysis</p>
         </div>
     </footer>
+
+    <script>
+        // Add smooth scrolling and animations
+        document.addEventListener('DOMContentLoaded', function() {
+            // Animate elements on scroll
+            const observerOptions = {
+                threshold: 0.1,
+                rootMargin: '0px 0px -50px 0px'
+            };
+            
+            const observer = new IntersectionObserver(function(entries) {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('animate-in');
+                    }
+                });
+            }, observerOptions);
+            
+            document.querySelectorAll('.timeline-item, .project-card, .education-card, .skill-badge').forEach(el => {
+                observer.observe(el);
+            });
+        });
+    </script>
 </body>
 </html>`;
 
@@ -719,7 +825,15 @@ const generatePortfolioContent = (profileData: any, template: string, targetRole
 };
 
 const generateTemplateCSS = (template: string) => {
-  // Base CSS styles for the portfolio
+  const baseColors = {
+    modern: { primary: '#3B82F6', secondary: '#1E40AF', accent: '#EFF6FF' },
+    creative: { primary: '#EC4899', secondary: '#BE185D', accent: '#FDF2F8' },
+    executive: { primary: '#1F2937', secondary: '#374151', accent: '#F9FAFB' },
+    startup: { primary: '#10B981', secondary: '#047857', accent: '#ECFDF5' }
+  };
+  
+  const colors = baseColors[template] || baseColors.modern;
+  
   return `
 /* Base Styles */
 * {
@@ -731,69 +845,106 @@ const generateTemplateCSS = (template: string) => {
 body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     line-height: 1.6;
-    color: #333;
-    scroll-behavior: smooth;
+    color: #374151;
+    background: #FFFFFF;
 }
 
 .container {
     max-width: 1200px;
     margin: 0 auto;
-    padding: 0 20px;
+    padding: 0 24px;
 }
 
+/* Hero Section */
 .hero-section {
+    background: linear-gradient(135deg, ${colors.primary} 0%, ${colors.secondary} 100%);
+    color: white;
     padding: 80px 0;
     text-align: center;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
+    position: relative;
+    overflow: hidden;
+}
+
+.hero-section::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.1);
+    z-index: 1;
+}
+
+.hero-content {
+    position: relative;
+    z-index: 2;
 }
 
 .avatar {
     width: 120px;
     height: 120px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-    display: inline-flex;
+    background: rgba(255,255,255,0.2);
+    backdrop-filter: blur(10px);
+    display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 48px;
-    font-weight: 600;
+    font-size: 36px;
+    font-weight: 700;
     color: white;
-    margin: 0 auto 30px;
+    margin: 0 auto 24px;
+    border: 3px solid rgba(255,255,255,0.3);
 }
 
 .name {
     font-size: 48px;
     font-weight: 700;
-    margin-bottom: 10px;
+    margin-bottom: 8px;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .title {
     font-size: 24px;
-    margin-bottom: 30px;
+    margin-bottom: 24px;
     opacity: 0.9;
+    font-weight: 500;
 }
 
 .summary {
     font-size: 18px;
-    max-width: 600px;
+    max-width: 700px;
     margin: 0 auto 40px;
     line-height: 1.7;
+    opacity: 0.95;
 }
 
-.contact-info {
-    display: flex;
-    justify-content: center;
-    gap: 30px;
-    flex-wrap: wrap;
+.contact-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+    max-width: 800px;
+    margin: 0 auto;
 }
 
 .contact-item {
     display: flex;
     align-items: center;
-    gap: 8px;
+    justify-content: center;
+    gap: 12px;
+    padding: 12px 20px;
+    background: rgba(255,255,255,0.1);
+    backdrop-filter: blur(10px);
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.2);
 }
 
+.contact-item i {
+    font-size: 18px;
+    opacity: 0.8;
+}
+
+/* Section Styles */
 section {
     padding: 80px 0;
 }
@@ -803,69 +954,160 @@ section {
     font-weight: 700;
     text-align: center;
     margin-bottom: 50px;
-    color: #333;
+    color: #1F2937;
+    position: relative;
+}
+
+.section-title::after {
+    content: '';
+    position: absolute;
+    bottom: -10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 80px;
+    height: 4px;
+    background: ${colors.primary};
+    border-radius: 2px;
+}
+
+/* Skills Section */
+.skills-section {
+    background: ${colors.accent};
 }
 
 .skills-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-    gap: 15px;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 16px;
     margin-bottom: 40px;
 }
 
-.skill-tag {
+.skill-badge {
     padding: 12px 20px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
+    background: white;
+    color: ${colors.primary};
     border-radius: 25px;
     text-align: center;
     font-weight: 500;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    border: 2px solid ${colors.primary}20;
+    transition: all 0.3s ease;
+    opacity: 0;
+    transform: translateY(20px);
 }
 
-.soft-skills {
+.skill-badge.animate-in {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.skill-badge:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+}
+
+.subsection-title {
+    font-size: 24px;
+    font-weight: 600;
+    text-align: center;
+    margin-bottom: 30px;
+    color: #374151;
+}
+
+.soft-skills-list {
     display: flex;
     flex-wrap: wrap;
-    gap: 15px;
+    gap: 12px;
     justify-content: center;
 }
 
 .soft-skill {
     padding: 8px 16px;
-    background: #f8f9ff;
-    color: #667eea;
-    border: 1px solid #667eea;
+    background: white;
+    color: ${colors.secondary};
+    border: 1px solid ${colors.primary}30;
     border-radius: 20px;
     font-size: 14px;
+    font-weight: 500;
 }
 
+/* Experience Section */
 .timeline {
-    max-width: 800px;
+    max-width: 900px;
     margin: 0 auto;
+    position: relative;
+}
+
+.timeline::before {
+    content: '';
+    position: absolute;
+    left: 30px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: ${colors.primary}30;
 }
 
 .timeline-item {
-    margin-bottom: 40px;
-    padding: 30px;
+    margin-bottom: 50px;
+    position: relative;
+    padding-left: 80px;
+    opacity: 0;
+    transform: translateX(-30px);
+}
+
+.timeline-item.animate-in {
+    opacity: 1;
+    transform: translateX(0);
+    transition: all 0.6s ease;
+}
+
+.timeline-marker {
+    position: absolute;
+    left: 20px;
+    top: 0;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: ${colors.primary};
+    border: 4px solid white;
+    box-shadow: 0 0 0 4px ${colors.primary}20;
+}
+
+.timeline-item.current .timeline-marker {
+    background: ${colors.secondary};
+    box-shadow: 0 0 0 4px ${colors.secondary}30;
+}
+
+.timeline-content {
     background: white;
+    padding: 30px;
     border-radius: 12px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    border-left: 4px solid ${colors.primary};
+}
+
+.experience-header {
+    margin-bottom: 20px;
 }
 
 .position {
-    font-size: 20px;
+    font-size: 22px;
     font-weight: 600;
-    color: #333;
+    color: #1F2937;
     margin-bottom: 5px;
 }
 
 .company {
     font-size: 18px;
-    color: #667eea;
+    color: ${colors.primary};
+    font-weight: 500;
     margin-bottom: 10px;
 }
 
 .duration {
-    background: #667eea;
+    display: inline-block;
+    background: ${colors.primary};
     color: white;
     padding: 4px 12px;
     border-radius: 12px;
@@ -873,101 +1115,222 @@ section {
     font-weight: 500;
 }
 
+.description {
+    margin-bottom: 15px;
+    color: #6B7280;
+    line-height: 1.6;
+}
+
 .achievements {
     list-style: none;
-    margin-top: 15px;
 }
 
 .achievements li {
-    padding: 5px 0;
+    padding: 6px 0;
     position: relative;
-    padding-left: 20px;
+    padding-left: 25px;
+    color: #374151;
 }
 
 .achievements li::before {
     content: '▶';
     position: absolute;
     left: 0;
-    color: #667eea;
+    color: ${colors.primary};
+    font-size: 12px;
+}
+
+/* Projects Section */
+.projects-section {
+    background: #F9FAFB;
 }
 
 .projects-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
     gap: 30px;
 }
 
 .project-card {
-    padding: 30px;
     background: white;
+    padding: 30px;
     border-radius: 12px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-    transition: transform 0.3s ease;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    transition: all 0.3s ease;
+    opacity: 0;
+    transform: translateY(30px);
+}
+
+.project-card.animate-in {
+    opacity: 1;
+    transform: translateY(0);
 }
 
 .project-card:hover {
     transform: translateY(-5px);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+}
+
+.project-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 15px;
 }
 
 .project-name {
-    font-size: 22px;
+    font-size: 20px;
     font-weight: 600;
-    margin-bottom: 15px;
-    color: #333;
+    color: #1F2937;
+    margin: 0;
+}
+
+.project-link {
+    color: ${colors.primary};
+    text-decoration: none;
+    padding: 8px;
+    border-radius: 8px;
+    transition: background 0.2s ease;
+}
+
+.project-link:hover {
+    background: ${colors.accent};
+}
+
+.project-description {
+    color: #6B7280;
+    margin-bottom: 20px;
+    line-height: 1.6;
 }
 
 .project-tech {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    margin: 20px 0;
 }
 
 .tech-tag {
     padding: 4px 12px;
-    background: #e1e8ff;
-    color: #667eea;
+    background: ${colors.accent};
+    color: ${colors.primary};
     border-radius: 15px;
     font-size: 12px;
+    font-weight: 500;
 }
 
-.education-list {
-    max-width: 600px;
+/* Education Section */
+.education-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 30px;
+    max-width: 800px;
     margin: 0 auto;
 }
 
-.education-item {
-    padding: 25px;
+.education-card {
     background: white;
+    padding: 30px;
     border-radius: 12px;
-    margin-bottom: 20px;
     box-shadow: 0 2px 15px rgba(0,0,0,0.08);
-    border-left: 4px solid #667eea;
+    border-left: 4px solid ${colors.primary};
+    opacity: 0;
+    transform: translateY(20px);
+}
+
+.education-card.animate-in {
+    opacity: 1;
+    transform: translateY(0);
+    transition: all 0.5s ease;
 }
 
 .degree {
     font-size: 20px;
     font-weight: 600;
-    color: #333;
+    color: #1F2937;
+    margin-bottom: 5px;
+}
+
+.field {
+    font-size: 16px;
+    color: ${colors.primary};
+    font-weight: 500;
+    margin-bottom: 10px;
 }
 
 .institution {
-    color: #667eea;
+    color: #6B7280;
+    margin-bottom: 10px;
+}
+
+.duration, .gpa {
+    font-size: 14px;
+    color: ${colors.secondary};
     font-weight: 500;
 }
 
+/* Footer */
 .footer {
-    background: #333;
+    background: #1F2937;
     color: white;
     text-align: center;
     padding: 40px 0;
 }
 
-@media (max-width: 768px) {
-    .name { font-size: 32px; }
-    .contact-info { flex-direction: column; gap: 15px; }
-    .projects-grid { grid-template-columns: 1fr; }
-    .skills-grid { grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); }
+.tagline {
+    opacity: 0.7;
+    font-size: 14px;
+    margin-top: 10px;
 }
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .name { font-size: 36px; }
+    .title { font-size: 20px; }
+    .summary { font-size: 16px; }
+    
+    .contact-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .projects-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .skills-grid {
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    }
+    
+    .timeline {
+        padding-left: 0;
+    }
+    
+    .timeline::before {
+        left: 15px;
+    }
+    
+    .timeline-item {
+        padding-left: 50px;
+    }
+    
+    .timeline-marker {
+        left: 5px;
+    }
+}
+
+/* Animation delays for staggered effect */
+.skill-badge:nth-child(1) { transition-delay: 0.1s; }
+.skill-badge:nth-child(2) { transition-delay: 0.2s; }
+.skill-badge:nth-child(3) { transition-delay: 0.3s; }
+.skill-badge:nth-child(4) { transition-delay: 0.4s; }
+.skill-badge:nth-child(5) { transition-delay: 0.5s; }
+.skill-badge:nth-child(6) { transition-delay: 0.6s; }
+
+.project-card:nth-child(1) { transition-delay: 0.1s; }
+.project-card:nth-child(2) { transition-delay: 0.2s; }
+.project-card:nth-child(3) { transition-delay: 0.3s; }
+
+.timeline-item:nth-child(1) { transition-delay: 0.1s; }
+.timeline-item:nth-child(2) { transition-delay: 0.3s; }
+.timeline-item:nth-child(3) { transition-delay: 0.5s; }
 `;
 };
